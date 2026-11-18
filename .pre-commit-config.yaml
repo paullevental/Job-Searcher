@@ -1,0 +1,51 @@
+# Install once per clone:  make hooks
+#
+# gitleaks is the M0 secret gate. Note it is a CLIENT-side hook and therefore
+# bypassable with `git commit --no-verify` by design. AGENTS.md §9 forbids that,
+# but policy is not a control: the real gate is the same scan running in CI with
+# GitHub branch protection making the check required. See docs/TODO.md.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^agents/
+      - id: ruff-format
+        files: ^agents/
+
+  - repo: local
+    hooks:
+      - id: no-model-sdk-outside-llm
+        name: model SDK imported outside agents/.../llm/ (AGENTS.md §2 rule 8)
+        entry: scripts/check_llm_chokepoint.py
+        language: python
+        pass_filenames: false
+        files: ^agents/
+
+      - id: no-banned-job-boards
+        name: banned job-board domain referenced (AGENTS.md §2 rule 2)
+        entry: scripts/check_banned_domains.py
+        language: python
+        pass_filenames: false
+
+      - id: env-example-in-sync
+        name: code reads an env var missing from .env.example (AGENTS.md §12)
+        entry: scripts/check_env_example.py
+        language: python
+        pass_filenames: false

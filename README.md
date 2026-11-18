@@ -112,4 +112,3 @@ browser bundle and therefore public.
 `pre-commit` hooks are client-side and `--no-verify` bypasses them by design, so
 the real gate is the same scan in CI with branch protection making it required.
 That setup is still outstanding; see `docs/TODO.md`.
-

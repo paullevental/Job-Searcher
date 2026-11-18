@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: workflow
+
+  datasource:
+    url: ${JDBC_DATABASE_URL:jdbc:postgresql://localhost:5432/offerradar}
+    username: ${JDBC_DATABASE_USER:offerradar}
+    password: ${JDBC_DATABASE_PASSWORD:replace-me-for-local-dev}
+    hikari:
+      # HikariCP defaults to a 30s connection timeout, so with Postgres down
+      # /ready would block for 30s instead of answering 503. A readiness probe
+      # has to fail fast or the orchestrator sees a timeout, not a verdict.
+      connection-timeout: 3000
+      validation-timeout: 1000
+
+  jpa:
+    # Flyway owns the schema (AGENTS.md §6). `validate` fails fast on entity
+    # drift; `update` is banned (§5) because it would let Java mutate the DDL.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Empty until M1 adds the first migration.
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Lettuce's default command timeout is 60s. Measured: with Redis stopped,
+      # /ready returned nothing for a full 60s while /health answered in 39ms.
+      connect-timeout: 2s
+      timeout: 2s
+
+server:
+  port: ${WORKFLOW_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}

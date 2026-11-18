@@ -1,0 +1,46 @@
+# --- secrets: never commit (AGENTS.md §2 rule 7, §9) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+docs/
+
+
+# --- Python (agents/) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+docs/
+using-ecc.md
+
+# --- Java (workflow/) ---
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+
+# --- Node (web/) ---
+node_modules/
+web/dist/
+*.tsbuildinfo
+.vite/
+
+# --- editors / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# --- local data ---
+*.log
+pgdata/

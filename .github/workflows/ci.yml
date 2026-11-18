@@ -1,0 +1,183 @@
+# CI for OfferRadar (AGENTS.md §11 M0, §12).
+#
+# Two principles this file is built on:
+#
+# 1. CI is the only non-bypassable gate. The pre-commit hooks are client-side
+#    and `git commit --no-verify` defeats every one of them (§2 rule 13 forbids
+#    that, but policy is not a control). So every check that enforces a hard
+#    rule runs here too, and the secret scan runs over full history rather than
+#    just the staged diff.
+# 2. CI invokes the same Makefile targets as local development. Duplicating the
+#    commands here would let CI and `make lint` drift apart silently.
+#
+# Third-party actions are pinned to a commit SHA, not a tag. A tag is mutable:
+# whoever controls the action repo can repoint v7 at new code, and that code
+# runs with access to this workflow's token and secrets.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege: nothing here writes to the repo, opens issues or publishes
+# packages. Jobs that need more must ask for it explicitly.
+permissions:
+  contents: read
+
+# A new push to the same ref makes the in-flight run obsolete. Cancel it rather
+# than paying for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- gate 1: secrets ------------------------------------------------------
+  secrets:
+    name: secret scan (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Default is a shallow clone of one commit. gitleaks walks history, so
+          # without this a key added a few commits back scans clean.
+          fetch-depth: 0
+
+      - name: gitleaks
+        # Same version as .pre-commit-config.yaml, and the repo's own
+        # .gitleaks.toml — the default ruleset does not detect Anthropic keys,
+        # which are the only credential this project holds.
+        # `git` (not the deprecated `detect`) scans every commit reachable here.
+        # Pinned by digest, not by the v8.21.2 tag: GHCR does not enforce tag
+        # immutability, so a tag is the same mutable reference this file refuses
+        # to accept for Actions. Mounted read-only — gitleaks only reads.
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" \
+            ghcr.io/gitleaks/gitleaks@sha256:0e99e8821643ea5b235718642b93bb32486af9c8162c8b8731f7cbdc951a7f46 \
+            git /repo --config /repo/.gitleaks.toml --redact --verbose
+
+  # --- gate 2: repo rules ---------------------------------------------------
+  guards:
+    name: repo rule guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: pre-commit (all files)
+        # Runs the same twelve hooks a commit would, over the whole tree instead
+        # of the staged diff: the three AGENTS.md §2 guards, ruff, and the
+        # generic checks. The gitleaks hook is a no-op here because its entry is
+        # `--staged` and CI stages nothing — the `secrets` job above is the real
+        # scan, and it is strictly stronger.
+        run: uvx pre-commit@4.7.0 run --all-files --show-diff-on-failure
+
+  # --- per-stack lint and test ----------------------------------------------
+  agents:
+    name: agents (python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          # §5 pins 3.12. uv fetches it; the runner's own Python is irrelevant.
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: agents/uv.lock
+
+      - name: Install (locked)
+        # --frozen fails if uv.lock disagrees with pyproject.toml, so a
+        # hand-edited dependency cannot reach main unnoticed.
+        run: uv sync --frozen
+        working-directory: agents
+
+      - name: Lint (ruff + mypy --strict)
+        run: make lint-agents
+
+      - name: Test (pytest)
+        # §2 rule 6: offline. No network or LLM calls, recorded fixtures only.
+        run: make test-agents
+
+  workflow:
+    name: workflow (java 21)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate Gradle wrapper
+        # gradle-wrapper.jar is a committed binary that the build executes, so a
+        # tampered one runs arbitrary code with the job's permissions. This
+        # checks it against Gradle's published checksums.
+        uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21" # §5
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # Dependency and build caches are only written from the default
+          # branch, so a PR cannot poison the cache the next run reads.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Lint (Spotless)
+        # Not `make lint-workflow`: that target shells into a gradle:8.12-jdk21
+        # container because there is no local Gradle. The runner has a JDK 21
+        # and a warm Gradle cache already, so Docker would only add minutes.
+        run: ./gradlew --no-daemon spotlessCheck
+        working-directory: workflow
+
+      - name: Test (JUnit)
+        run: ./gradlew --no-daemon test
+        working-directory: workflow
+
+      - name: Upload test report
+        # Gradle's HTML report is the only way to read a failure after the fact.
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: workflow-test-report
+          path: workflow/build/reports/tests/test/
+          retention-days: 7
+
+  web:
+    name: web (node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22" # matches web/Dockerfile
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install (locked)
+        # npm ci, not npm install: it installs exactly the lockfile and fails if
+        # package.json has drifted from it.
+        run: npm ci
+        working-directory: web
+
+      - name: Lint (ESLint + Prettier + tsc)
+        run: make lint-web
+
+      - name: Test (Vitest)
+        run: make test-web

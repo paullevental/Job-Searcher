@@ -1,0 +1,19 @@
+# Docker reads .dockerignore from the build context root, so each service needs
+# its own. Secrets must never enter the context: a later `RUN rm` does not
+# remove them from an earlier layer (AGENTS.md §9).
+.env
+.env.*
+*.pem
+*.key
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
