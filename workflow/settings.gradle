@@ -1,7 +1,9 @@
-plugins {
-    // Lets Gradle download the Java 21 toolchain itself, so the build does not
-    // depend on which JDK happens to be installed locally.
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+// mavenCentral() is a fallback: plugin resolution otherwise has the portal as its only source.
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
 }
 
 rootProject.name = 'workflow'

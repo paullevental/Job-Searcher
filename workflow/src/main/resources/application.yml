@@ -7,9 +7,7 @@ spring:
     username: ${JDBC_DATABASE_USER:offerradar}
     password: ${JDBC_DATABASE_PASSWORD:replace-me-for-local-dev}
     hikari:
-      # HikariCP defaults to a 30s connection timeout, so with Postgres down
-      # /ready would block for 30s instead of answering 503. A readiness probe
-      # has to fail fast or the orchestrator sees a timeout, not a verdict.
+      # Bounded so /ready answers 503 fast instead of blocking on Hikari's 30s default.
       connection-timeout: 3000
       validation-timeout: 1000
 
@@ -29,8 +27,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      # Lettuce's default command timeout is 60s. Measured: with Redis stopped,
-      # /ready returned nothing for a full 60s while /health answered in 39ms.
+      # Bounded so /ready answers 503 fast instead of blocking on Lettuce's 60s default.
       connect-timeout: 2s
       timeout: 2s
 

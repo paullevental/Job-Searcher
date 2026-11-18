@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1
 #
-# Dev-server image: Compose mounts the source and Vite serves with HMR. The
-# production build (static assets behind a web server) is M11, not M0.
-# The stage Compose runs is last, so a plain `docker build web/` gets it.
+# Dev-server image; Compose bind-mounts the source for HMR. Production build is M11.
+# Runtime stage must be last: `docker build` with no --target builds the final stage.
 
 FROM node:22-alpine AS base
 WORKDIR /app

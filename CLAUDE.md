@@ -12,6 +12,21 @@ AGENTS.md §10's branch-per-task line.
 
 ---
 
+## Comments
+
+Paul's instruction, 2026-11-18. Applies to every file and language.
+
+- Comment only what the code cannot say: a non-obvious constraint, a unit or
+  encoding, a deliberate omission, a line that looks removable but isn't.
+- Idiomatic config gets none. `pluginManagement { repositories { ... } }` is not
+  complex and needs no explanation.
+- When something genuinely is complex, point form, one line per fact.
+- Decision history, measurements and rejected alternatives do not belong in
+  code. They go in an ADR or a commit message.
+- Never restate the next line, and never explain why a block is *absent*.
+
+---
+
 ## M0: what it is
 
 **Goal:** a fresh clone starts the whole stack with one command, and no change
