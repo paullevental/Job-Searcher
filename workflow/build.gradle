@@ -44,7 +44,9 @@ dependencies {
 
 dependencyManagement {
     imports {
-        mavenBom 'org.testcontainers:testcontainers-bom:1.20.4'
+        // 1.21.4, not 1.20.x: older docker-java negotiates Docker API 1.32, which
+        // Engine 29 rejects (minimum 1.40). 1.21.4 tries 1.44 and falls back.
+        mavenBom 'org.testcontainers:testcontainers-bom:1.21.4'
     }
 }
 
@@ -71,5 +73,10 @@ tasks.named('test') {
     maxHeapSize = '768m'
     testLogging {
         events 'passed', 'skipped', 'failed'
+        // Gradle's default SHORT prints only the exception class and line, so a CI
+        // failure is unreadable without downloading the HTML report artifact.
+        exceptionFormat = 'full'
+        showCauses = true
+        showStackTraces = true
     }
 }
