@@ -33,8 +33,12 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
+    // runtimeOnly above puts the driver on the runtime path only; the schema tests
+    // need PSQLException at compile time to read which constraint a failure names.
+    testImplementation 'org.postgresql:postgresql'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -62,6 +66,9 @@ tasks.named('jar') {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Sizes the forked test JVM, which gradle.properties does not: org.gradle.jvmargs
+    // there sizes the daemon. Left implicit this would be Gradle's 512m.
+    maxHeapSize = '768m'
     testLogging {
         events 'passed', 'skipped', 'failed'
     }

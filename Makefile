@@ -1,7 +1,8 @@
 # OfferRadar developer commands (AGENTS.md §10).
 #
-# The Java service builds in a container: `gradle` is not assumed to be
-# installed, and the toolchain is pinned to Java 21 regardless of the local JDK.
+# Docker is a dependency provider and a verification target, not the build
+# environment: Gradle runs on the host via ./gradlew, whose daemon JVM is pinned
+# to Java 21 by workflow/gradle/gradle-daemon-jvm.properties.
 
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
@@ -9,14 +10,14 @@ SHELL := /bin/bash
 COMPOSE := docker compose
 UV := uv
 NPM := npm --prefix web
-GRADLE_CACHE := offerradar-gradle-cache
-GRADLE_IMAGE := gradle:8.12-jdk21
-GRADLE := docker run --rm \
-	-v "$(CURDIR)/workflow":/app -w /app \
-	-v $(GRADLE_CACHE):/home/gradle/.gradle \
-	$(GRADLE_IMAGE) gradle --no-daemon
+GRADLE := cd workflow && ./gradlew
+# "$$@" is load-bearing: without it `$(PSQL) -c "..."` passes -c to sh as a
+# positional parameter, psql runs with no command, and the target silently
+# succeeds having done nothing. $0 is set to `sh` so "$$@" starts at the -c.
+PSQL := $(COMPOSE) exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" "$$@"' sh
 
 .PHONY: help env hooks up down down-v logs ps \
+        migrate migrate-info seed seed-volume unseed-volume explain db-shell \
         test test-agents test-workflow test-web \
         lint lint-agents lint-workflow lint-web \
         fmt fmt-agents fmt-workflow fmt-web \
@@ -70,6 +71,30 @@ logs: ## Tail logs from all services
 ps: ## Show service status
 	$(COMPOSE) ps
 
+# --- database --------------------------------------------------------------
+
+migrate: ## Start workflow, which runs Flyway on boot (no separate Flyway CLI); print history
+	$(COMPOSE) up -d --build workflow
+	@$(MAKE) migrate-info
+
+migrate-info: ## List applied Flyway migrations: version, description, success, installed_on
+	@$(PSQL) -c "SELECT version, description, success, installed_on FROM flyway_schema_history ORDER BY installed_rank;"
+
+seed: ## Load scripts/seed/dev_seed.sql: a few real companies and their ATS boards
+	$(PSQL) < scripts/seed/dev_seed.sql
+
+seed-volume: seed ## Load ~50k synthetic postings for the staleness-index demonstration
+	$(PSQL) < scripts/seed/explain_fixture.sql
+
+unseed-volume: ## Remove the synthetic fixture postings that seed-volume loaded
+	$(PSQL) -c "DELETE FROM postings WHERE dedup_key LIKE 'fixture-%';"
+
+explain: ## Show EXPLAIN ANALYZE for the staleness query, indexed vs. forced sequential scan
+	$(PSQL) < scripts/seed/explain_queries.sql
+
+db-shell: ## Open an interactive psql shell in the postgres container
+	$(COMPOSE) exec -it postgres sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
 # --- tests -----------------------------------------------------------------
 
 test: test-agents test-workflow test-web ## Run every test suite
@@ -77,7 +102,13 @@ test: test-agents test-workflow test-web ## Run every test suite
 test-agents: ## pytest (offline; no network, no LLM calls)
 	cd agents && $(UV) run pytest
 
-test-workflow: ## JUnit via Gradle in Docker
+test-workflow: ## JUnit, including Testcontainers schema tests
+# Testcontainers needs the Docker daemon, but not Compose: one Postgres, no stack.
+	@docker info >/dev/null 2>&1 || { \
+		echo "The Docker daemon is not running; Testcontainers cannot start Postgres."; \
+		echo "Start Docker Desktop, then rerun. Do not run 'make up' as well -- the"; \
+		echo "five-service stack and a test container together is what exhausts memory."; \
+		exit 1; }
 	$(GRADLE) test
 
 test-web: ## Vitest
@@ -126,10 +157,8 @@ check-env: ## §9/§12: .env.example documents every variable code reads
 
 # --- misc ------------------------------------------------------------------
 
-wrapper: ## Regenerate the Gradle wrapper (needs Docker)
-	docker run --rm -v "$(CURDIR)/workflow":/app -w /app \
-		-v $(GRADLE_CACHE):/home/gradle/.gradle \
-		$(GRADLE_IMAGE) gradle wrapper --gradle-version 8.12 --no-daemon
+wrapper: ## Regenerate the Gradle wrapper
+	$(GRADLE) wrapper --gradle-version 8.12
 
 clean: ## Remove build artefacts and local caches
 	$(RM) -r agents/.venv agents/.pytest_cache agents/.ruff_cache agents/.mypy_cache

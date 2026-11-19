@@ -21,7 +21,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    # Empty until M1 adds the first migration.
+    # A non-empty DB with no history must fail loudly, not get silently adopted.
+    baseline-on-migrate: false
+    # A changed checksum on an applied migration is what AGENTS.md §2 rule 6 forbids.
+    validate-on-migrate: true
+    out-of-order: false
+    clean-disabled: true
 
   data:
     redis:

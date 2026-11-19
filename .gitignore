@@ -28,6 +28,8 @@ using-ecc.md
 build/
 !gradle/wrapper/gradle-wrapper.jar
 *.class
+# Output of the VS Code Java language server, not of Gradle.
+workflow/bin/
 
 # --- Node (web/) ---
 node_modules/
@@ -44,3 +46,6 @@ web/dist/
 # --- local data ---
 *.log
 pgdata/
+
+# --- personal, not part of the project ---
+resume.md

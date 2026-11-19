@@ -2,7 +2,7 @@
 
 Instructions for any coding agent working in this repo. Read all of it before your first change. The human developer is Paul. The full design rationale is in `docs/OFFERRADAR.md`; you do not need it to work, but read the relevant section if a rule here is unclear.
 
-**Current milestone: M0** ← Paul updates this line. Work only on this milestone.
+**Current milestone: M1** ← Paul updates this line. Work only on this milestone.
 
 ---
 
@@ -120,23 +120,32 @@ Inter-service calls: REST/JSON per `api/openapi.yaml`. Generate clients from the
 
 ## 7. Data model
 
-Flyway SQL in `workflow/src/main/resources/db/migration`. Embedding dimension: 768 for `nomic-embed-text` (change in one constant if the model changes; store `embedding_model` and re-embed on change, never mix models).
+Flyway SQL in `workflow/src/main/resources/db/migration` (V001-V008). Embedding dimension: 768 for `nomic-embed-text` (change in one constant if the model changes; store `embedding_model` and re-embed on change, never mix models). `docs/schema.md` holds a longer write-up — ER diagram, per-table normal-form analysis, the query behind each index — but it is a local working document and not tracked in git, so this section is the authoritative copy.
+
+Three conventions apply throughout. Money is `numeric`, never float, because `spent_usd` accumulates by repeated addition into a hard cap. Status-like columns are `text` with a `CHECK`, never a native enum, because Flyway is append-only and replacing a constraint is easier than `ALTER TYPE ... ADD VALUE`. Mutable tables carry `created_at` and `updated_at`, the latter maintained by the shared `set_updated_at()` trigger in V001; tables whose rows are immutable facts (`posting_sightings`, `resume_chunks`, `match_analyses`, `llm_calls`) carry `created_at` only. `approvals` carries `decided_at` alone, because there the row *is* the decision and a second timestamp would always equal it.
 
 | Table | Columns |
 |---|---|
-| `companies` | `id`, `name`, `normalized_name` (unique), `domain`, `source` |
-| `ats_boards` | `id`, `company_id` FK, `provider` (`greenhouse`/`lever`/`ashby`/`workable`), `board_token`, `last_polled_at`, `etag`, `consecutive_misses` |
-| `postings` | `id`, `company_id` FK, `title`, `normalized_title`, `location`, `remote` bool, `term`, `canonical_url`, `dedup_key` (unique), `description`, `description_hash`, `embedding vector(768)`, `embedding_model`, `status` (`open`/`stale`/`closed`), `first_seen_at`, `last_seen_at`, `missed_polls` int |
-| `posting_sightings` | `id`, `posting_id` FK, `source`, `source_url`, `seen_at` |
-| `resume_chunks` | `id`, `kind` (`bullet`/`project`/`course`), `text`, `embedding vector(768)`, `embedding_model`, `version` |
-| `matches` | `id`, `posting_id` FK unique, `similarity` float (stage 1), `selected_for_analysis` bool, `score` 0–100 nullable (stage 2), `matched_skills` jsonb, `missing_skills` jsonb, `why_fit`, `model`, `prompt_version`, `resume_version`, `created_at` |
-| `contacts` | `id`, `posting_id` FK, `name`, `title`, `source_url` NOT NULL, `confidence` |
+| `companies` | `id`, `name`, `normalized_name` (unique), `domain`, `source` (`yc`/`manual`/`github_list`/`ats_discovery`) |
+| `ats_boards` | `id`, `company_id` FK, `provider` (`greenhouse`/`lever`/`ashby`/`workable`), `board_token`, `last_polled_at`, `etag`, `consecutive_misses`; unique `(company_id, provider, board_token)` |
+| `postings` | `id`, `company_id` FK, `title`, `normalized_title`, `location`, `remote` bool, `term`, `canonical_url`, `dedup_key` (unique), `description`, `description_hash`, `embedding vector(768)`, `embedding_model`, `status` (`open`/`stale`/`closed`/`merged`), `merged_into_id` self-FK, `first_seen_at`, `last_seen_at`, `missed_polls` int |
+| `posting_sightings` | `id`, `posting_id` FK, `source`, `source_url`, `seen_at`; unique `(posting_id, source, source_url)`. One row per distinct place a posting was seen, not an event log: a repeat sighting refreshes `seen_at` through `ON CONFLICT`, which is what makes Scout idempotent |
+| `resume_chunks` | `id`, `version`, `kind` (`bullet`/`project`/`course`), `ordinal`, `text`, `embedding vector(768)`, `embedding_model`; unique `(version, ordinal)` |
+| `matches` | Stage 1 only: `id`, `posting_id` FK unique, `similarity` real, `embedding_model`, `resume_version`, `selected_for_analysis` bool |
+| `match_analyses` | Stage 2 only: `id`, `posting_id` FK, `description_hash`, `prompt_version`, `resume_version`, `model`, `provider` (`anthropic`/`ollama`), `score` smallint 0-100, `matched_skills` jsonb, `missing_skills` jsonb, `why_fit`; unique on `(posting_id, description_hash, prompt_version, resume_version, model, provider)` |
+| `contacts` | `id`, `posting_id` FK, `name`, `title`, `source_url` NOT NULL, `confidence`, `deleted_at`. Soft delete, because `outreach_drafts` references this row and a `sent_manually` draft is the only human-authored record in the system |
 | `outreach_drafts` | `id`, `contact_id` FK, `body`, `edited_body`, `status` (`draft`/`approved`/`sent_manually`/`discarded`) |
-| `agent_runs` | `id`, `started_at`, `finished_at`, `status`, `budget_usd`, `spent_usd`, `llm_call_count`, `langgraph_thread_id` |
-| `approvals` | `id`, `run_id` FK, `gate`, `item_type`, `item_id`, `decision`, `decided_at` |
-| `llm_calls` | `id`, `run_id` FK, `agent`, `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`, `latency_ms`, `prompt_version`, `created_at` |
+| `agent_runs` | `id`, `started_at`, `finished_at`, `status` (`running`/`awaiting_gate_1`/`awaiting_gate_2`/`awaiting_gate_3`/`done`/`failed`/`budget_exhausted`), `budget_usd` numeric, `spent_usd` numeric, `llm_call_count`, `langgraph_thread_id` (unique; the only join key to the LangGraph checkpointer) |
+| `approvals` | `id`, `run_id` FK, `gate` (1/2/3), `item_type` (`posting`/`contact`/`draft`), `item_id`, `decision` (`approved`/`rejected`), `decided_at`; unique `(run_id, gate, item_type, item_id)`. `item_id` is a polymorphic reference, so it carries no foreign key and the application must verify the target exists |
+| `llm_calls` | `id`, `run_id` FK, `agent` (`supervisor`/`scout`/`matcher`/`recon`/`scribe`), `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd` numeric, `latency_ms`, `prompt_version`, `created_at` |
 
-Indexes: HNSW on both `embedding` columns; unique on `postings.dedup_key`; partial `postings(status) WHERE status = 'open'`.
+**Why stage 1 and stage 2 are separate tables.** Stage 2 can legitimately produce more than one row for the same posting, because a score is only meaningful relative to the inputs that produced it: a different `description_hash`, `prompt_version`, `resume_version`, `model` or `provider` is a different result, not a correction of the earlier one. (§8's skip rule keys on a subset of those; which subset is an open M5 question.) A single `matches` table with `UNIQUE (posting_id)` cannot hold M5's required comparison of two prompt versions across two providers, and it forces `similarity` — which is determined by `posting_id` alone — to repeat identically across every scoring row for that posting. Formally: `UNIQUE (posting_id)` would make `posting_id` a candidate key of the combined table while it is also a proper subset of the six-attribute key stage-2 data needs, and a non-trivial dependency whose left side is a proper subset of a candidate key is a 2NF violation.
+
+`postings` carries four CHECKs that later milestones lean on: `status = 'merged'` holds if and only if `merged_into_id` is set; a posting cannot be merged into itself; an `embedding` cannot exist without its `embedding_model`; and `description` and `description_hash` are either both present or both absent, so the memoization key cannot drift from the text it was computed over. `resume_chunks` repeats the embedding pairing. `matches.similarity` is constrained to [-1, 1] and `contacts.confidence` to [0, 1]. Every CHECK and every multi-column UNIQUE is explicitly named (`ck_*`, `uq_*`) so a later migration can alter one by name instead of by declaration order.
+
+Indexes: HNSW with `vector_cosine_ops` on both `embedding` columns, matching §8's cosine ranking; unique on `postings.dedup_key`; FK indexes on `postings(company_id)`, `postings(merged_into_id)`, `outreach_drafts(contact_id)` and `llm_calls(run_id)`; partial `postings(last_seen_at) WHERE status = 'open'` for the staleness sweep; partial `contacts(posting_id) WHERE deleted_at IS NULL`; `ats_boards(last_polled_at)` for the poll queue; `agent_runs(status)` for the reconciler. A plain index on an FK already covered by the leading column of a UNIQUE constraint is not created, and neither is the partial `postings(status) WHERE status = 'open'` this section previously specified. Postgres satisfies an equality lookup from the leading column of a multicolumn unique index just as well as a dedicated index would; and a single low-cardinality partial index with no co-predicate matches no query in §8, because every real read wants open rows ordered or filtered by something else, which `postings(last_seen_at)` already covers.
+
+Deletes from `postings` cascade to derived rows (`posting_sightings`, `matches`, `match_analyses`) and are restricted by `contacts`. The asymmetry is deliberate: derived rows can be recomputed, whereas a contact names a real person and has human-authored drafts hanging off it. Merging a duplicate posting is an `UPDATE` setting `status = 'merged'` and `merged_into_id`, never a `DELETE`. One level up, `companies` cascades to `ats_boards` but is restricted by `postings`, on the same reasoning: a board is a polling detail, a posting is history.
 
 ---
 
@@ -159,7 +168,7 @@ Indexes: HNSW on both `embedding` columns; unique on `postings.dedup_key`; parti
 - **Stage 0, prefilter:** rules only (term, location, seniority words, citizenship/clearance keywords).
 - **Stage 1, embed + rank (free):** embed resume chunks once per `resume_version`; embed each posting once on first sight. `rank_postings(k=20)` scores each open posting by cosine similarity to resume chunks (formula chosen by Paul in M4, e.g. mean of top-3 chunk similarities), writes `matches.similarity`, and sends the top `GATE1_SHORTLIST_SIZE` (default 20) to Gate 1 with their nearest resume chunks.
 - **Gate 1:** Paul sets `selected_for_analysis`. If `AUTO_FORWARD_TOP_N` > 0 (default 0), that many top postings are selected automatically.
-- **Stage 2, Claude scoring:** only `selected_for_analysis = true`. Skip if a `matches.score` exists for the same `description_hash`, `prompt_version`, `resume_version`. Retrieve top-k resume chunks → score via Batches API.
+- **Stage 2, Claude scoring:** only `selected_for_analysis = true`. Results go to `match_analyses`, not `matches` (§7). Skip if a `match_analyses` row exists for the same `description_hash`, `prompt_version`, `resume_version`. That row also records `model` and `provider`; whether those two belong in the skip key is an open M5 decision, so do not assume either answer. Retrieve top-k resume chunks → score via Batches API.
 - Output schema (via tool use): `{score: int 0-100, matched_skills: string[], missing_skills: string[], why_fit: string (≤2 sentences)}`.
 - Prompts live in `agents/prompts/` and carry a version; store `prompt_version` with every result.
 
@@ -172,7 +181,7 @@ Indexes: HNSW on both `embedding` columns; unique on `postings.dedup_key`; parti
 - Inputs: approved postings only. Sources: company team/about pages, engineering blog author pages, public GitHub org members.
 - Playwright only when plain HTTP returns no usable content.
 - Extract `{name, title, source_url}`; drop entries without `source_url`. Max 3 contacts per posting.
-- Delete contacts when their posting becomes `closed`.
+- Soft-delete contacts when their posting becomes `closed`: set `deleted_at`, never `DELETE`. `outreach_drafts` references `contacts`, and a `sent_manually` draft is the only human-authored record in the system.
 
 ### Scribe
 - Inputs: approved contacts. Use Paul's example messages in `agents/prompts/scribe_examples/` as few-shot examples.

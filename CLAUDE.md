@@ -71,10 +71,21 @@ flips `/ready` to 503 while `/health` stays 200; gitleaks catches a fake key.
 
 ### Build-environment facts worth knowing
 
-- The Java build runs in a `gradle:8.12-jdk21` container. `gradle` is not
-  installed locally and the local JDK is 25 against §5's Java 21, so a fresh
-  clone needs only Docker. `make test-workflow`, `make lint-workflow` and
-  `make wrapper` all route through it.
+- The Java build runs on the host through `./gradlew`. `gradle` itself is not
+  installed and does not need to be — the committed wrapper covers that — but
+  **a JDK 21 must be installed**: `workflow/gradle/gradle-daemon-jvm.properties`
+  pins the daemon to 21 because Gradle 8.12 cannot run on the JDK 25 that is
+  first on `PATH`, and daemon-JVM criteria does not download a missing JDK the
+  way toolchains do. With no 21 present, `./gradlew` fails at launch with a clear
+  error and there is no fallback. Install Temurin or Corretto 21 on a fresh clone.
+- Docker is a dependency provider and a verification target, never the build
+  environment: it is needed for the Testcontainers daemon in `make test-workflow`,
+  for Compose, and for image builds. On an 8 GB machine, do not hold `make up`
+  and a test run open at the same time — that combination is what crashed the
+  machine on 2026-11-18.
+- `workflow/gradle.properties` is copied into the image by `workflow/Dockerfile`,
+  so its heap and worker caps govern the in-image Gradle build too. Loosening
+  them for the host silently loosens the build that runs in the Docker VM.
 - Python is pinned to 3.12 per §5; the local interpreter is 3.14 and `uv` fetches
   3.12.
 - Dev dependencies are a PEP 735 `[dependency-groups]` block, not an extra, so
