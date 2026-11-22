@@ -12,6 +12,9 @@ dependencies = [
     "asyncpg>=0.30",
     "redis>=5.2",
     "httpx>=0.28",
+    # robots.txt parsing. urllib.robotparser is stdlib but blocking and does
+    # not handle wildcards or crawl-delay; Protego is what Scrapy uses.
+    "protego>=0.3",
 ]
 
 # PEP 735 dependency group, not an optional-dependencies extra: `uv sync`
@@ -24,6 +27,11 @@ dev = [
     "respx>=0.21",
     "ruff>=0.8",
     "mypy>=1.13",
+    # Container-backed tests: "running Scout twice adds zero rows" is a claim
+    # about real ON CONFLICT against real constraints. Pinned recent because
+    # the CI runner's Docker Engine rejects clients below API 1.40.
+    "testcontainers[postgres]>=4.9",
+    "psycopg[binary]>=3.2",
 ]
 
 [build-system]
@@ -44,6 +52,8 @@ ignore = ["S101"]  # assert is how pytest works
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "B"]
+# Jitter is not cryptographic.
+"src/offerradar_agents/scout/retry.py" = ["S311"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -62,3 +72,4 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # No live network and no LLM calls in tests (AGENTS.md §2 rule 5).
 addopts = "-q --strict-markers"
+markers = ["integration: needs a Docker daemon (Postgres container)"]

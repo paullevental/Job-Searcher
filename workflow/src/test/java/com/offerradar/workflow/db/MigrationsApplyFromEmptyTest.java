@@ -26,7 +26,8 @@ class MigrationsApplyFromEmptyTest extends PostgresTestBase {
           "outreach_drafts",
           "agent_runs",
           "approvals",
-          "llm_calls");
+          "llm_calls",
+          "source_cursors");
 
   @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -49,8 +50,8 @@ class MigrationsApplyFromEmptyTest extends PostgresTestBase {
         jdbcTemplate.queryForObject("SELECT count(*) FROM flyway_schema_history", Integer.class);
 
     assertThat(failedCount).isZero();
-    // 8 = V001..V008; bump deliberately when a migration is added, not as a side effect.
-    assertThat(appliedCount).isEqualTo(8);
+    // 10 = V001..V010; bump deliberately when a migration is added, not as a side effect.
+    assertThat(appliedCount).isEqualTo(10);
   }
 
   @Test

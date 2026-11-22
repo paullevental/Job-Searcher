@@ -41,6 +41,9 @@ PATTERN = re.compile(
 ALLOWED_PATHS = (
     "web/src/features/manual-add/",
     "scripts/check_banned_domains.py",
+    # A blocklist cannot be written without naming what it blocks. This is the
+    # request-time enforcement of rule 2; nothing else may name these hosts.
+    "agents/src/offerradar_agents/scout/blocklist.py",
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",

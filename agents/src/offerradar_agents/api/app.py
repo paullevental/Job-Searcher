@@ -1,17 +1,3 @@
-"""FastAPI application for the agents service.
-
-Two probes, deliberately different:
-
-  GET /health  liveness  -- this process is up. No dependencies touched, so a
-                            Postgres outage never makes Compose restart a
-                            healthy process.
-  GET /ready   readiness -- Postgres and Redis are actually reachable. This is
-                            what `depends_on: condition: service_healthy` should
-                            gate on, so "all services healthy" means something.
-
-Run endpoints (POST /runs, POST /runs/{id}/resume) arrive in M6.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -23,10 +9,11 @@ import redis.asyncio as redis
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from offerradar_agents import __version__
 from offerradar_agents.config import Settings, get_settings
+from offerradar_agents.db.session import build_engine
 
 logger = logging.getLogger(__name__)
 
@@ -39,20 +26,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper())
 
-    app.state.engine = create_async_engine(
-        settings.database_url,
-        pool_pre_ping=True,
-        connect_args={"timeout": PROBE_TIMEOUT_SECONDS},
-    )
-    app.state.redis = redis.from_url(
-        settings.redis_url,
-        socket_connect_timeout=PROBE_TIMEOUT_SECONDS,
-        socket_timeout=PROBE_TIMEOUT_SECONDS,
-    )
+    app.state.engine = build_engine(settings, connect_timeout=PROBE_TIMEOUT_SECONDS)
+    # Nested so a failure constructing the Redis client still disposes the engine.
     try:
-        yield
+        app.state.redis = redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=PROBE_TIMEOUT_SECONDS,
+            socket_timeout=PROBE_TIMEOUT_SECONDS,
+        )
+        try:
+            yield
+        finally:
+            await app.state.redis.aclose()
     finally:
-        await app.state.redis.aclose()
         await app.state.engine.dispose()
 
 

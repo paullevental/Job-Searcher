@@ -1,0 +1,29 @@
+{
+  "jobs": [
+    {
+      "id": 4002001001,
+      "title": "Software Engineering Intern (Summer 2026)",
+      "absolute_url": "https://job-boards.greenhouse.io/examplecorp/jobs/4002001001",
+      "location": {"name": "Remote - US"},
+      "content": "<p>Join our platform team for a Summer 2026 internship. C&amp;#43;&amp;#43; experience a plus.</p>",
+      "updated_at": "2026-11-18T12:00:00-05:00"
+    },
+    {
+      "id": 4002001002,
+      "title": "Data Science Co-op – Winter 2026",
+      "absolute_url": "https://job-boards.greenhouse.io/examplecorp/jobs/4002001002",
+      "location": {"name": null},
+      "content": "<p>6-month co-op. Location TBD pending visa sponsorship review.</p>",
+      "updated_at": "2026-11-15T09:30:00-05:00"
+    },
+    {
+      "id": 4002001003,
+      "title": "Security Intern (Summer 2026) 🔒 CLOSED",
+      "absolute_url": "https://job-boards.greenhouse.io/examplecorp/jobs/4002001003",
+      "location": {"name": "Austin, TX"},
+      "content": "<p>Position closed; kept for history.</p>",
+      "updated_at": "2026-10-01T08:00:00-05:00"
+    }
+  ],
+  "meta": {"total": 3}
+}

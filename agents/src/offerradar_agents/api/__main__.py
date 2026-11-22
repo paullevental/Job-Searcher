@@ -1,5 +1,3 @@
-"""Entry point: python -m offerradar_agents.api"""
-
 from __future__ import annotations
 
 import uvicorn

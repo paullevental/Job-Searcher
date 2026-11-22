@@ -1,0 +1,28 @@
+[
+  {
+    "id": "a1b2c3d4-0001-4000-8000-000000000001",
+    "text": "Backend Engineering Intern, Summer 2026",
+    "hostedUrl": "https://jobs.lever.co/examplecorp/a1b2c3d4-0001-4000-8000-000000000001",
+    "applyUrl": "https://jobs.lever.co/examplecorp/a1b2c3d4-0001-4000-8000-000000000001/apply",
+    "categories": {
+      "team": "Engineering",
+      "location": "San Francisco, CA",
+      "commitment": "Internship"
+    },
+    "descriptionPlain": "Build backend services during a Summer 2026 internship.",
+    "createdAt": 1731900000000
+  },
+  {
+    "id": "a1b2c3d4-0002-4000-8000-000000000002",
+    "text": "Platform Co-op (Term: Spring 2026)",
+    "hostedUrl": "https://jobs.lever.co/examplecorp/a1b2c3d4-0002-4000-8000-000000000002",
+    "applyUrl": null,
+    "categories": {
+      "team": "Platform",
+      "location": null,
+      "commitment": "Co-op"
+    },
+    "descriptionPlain": "Location flexible; remote candidates considered.",
+    "createdAt": 1731000000000
+  }
+]

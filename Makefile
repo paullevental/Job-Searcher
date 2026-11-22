@@ -18,7 +18,7 @@ PSQL := $(COMPOSE) exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$$PO
 
 .PHONY: help env hooks up down down-v logs ps \
         migrate migrate-info seed seed-volume unseed-volume explain db-shell \
-        test test-agents test-workflow test-web \
+        test test-agents test-agents-offline test-workflow test-web \
         lint lint-agents lint-workflow lint-web \
         fmt fmt-agents fmt-workflow fmt-web \
         check check-llm check-domains check-env wrapper install clean
@@ -99,8 +99,11 @@ db-shell: ## Open an interactive psql shell in the postgres container
 
 test: test-agents test-workflow test-web ## Run every test suite
 
-test-agents: ## pytest (offline; no network, no LLM calls)
+test-agents: ## pytest, including container-backed tests (needs Docker)
 	cd agents && $(UV) run pytest
+
+test-agents-offline: ## pytest without the Postgres container (no Docker needed)
+	cd agents && $(UV) run pytest -m "not integration"
 
 test-workflow: ## JUnit, including Testcontainers schema tests
 # Testcontainers needs the Docker daemon, but not Compose: one Postgres, no stack.
@@ -144,13 +147,16 @@ fmt-web:
 
 # --- repo guards (AGENTS.md §2) --------------------------------------------
 
-check: check-llm check-domains check-env ## Run all repo rule guards
+check: check-llm check-domains check-env check-offline ## Run all repo rule guards
 
 check-llm: ## Rule 8: no model SDK outside agents/.../llm/
 	@python3 scripts/check_llm_chokepoint.py
 
 check-domains: ## Rule 2: no banned job-board domains in source
 	@python3 scripts/check_banned_domains.py
+
+check-offline: ## Rule 5: no live network in tests
+	@python3 scripts/check_offline_tests.py
 
 check-env: ## §9/§12: .env.example documents every variable code reads
 	@python3 scripts/check_env_example.py
