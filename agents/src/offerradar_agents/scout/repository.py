@@ -26,6 +26,7 @@ _COMPANY_SOURCE_BY_POSTING_SOURCE: dict[str, str] = {
 @dataclass(frozen=True)
 class AtsBoardRow:
     id: int
+    company_id: int
     provider: str
     board_token: str
 
@@ -175,6 +176,7 @@ async def list_ats_boards(
     statement = (
         select(
             tables.ats_boards.c.id,
+            tables.ats_boards.c.company_id,
             tables.ats_boards.c.provider,
             tables.ats_boards.c.board_token,
         )
@@ -183,6 +185,11 @@ async def list_ats_boards(
     )
     result = await session.execute(statement)
     return [
-        AtsBoardRow(id=int(row.id), provider=str(row.provider), board_token=str(row.board_token))
+        AtsBoardRow(
+            id=int(row.id),
+            company_id=int(row.company_id),
+            provider=str(row.provider),
+            board_token=str(row.board_token),
+        )
         for row in result.all()
     ]

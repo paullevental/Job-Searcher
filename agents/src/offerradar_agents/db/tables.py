@@ -71,6 +71,7 @@ postings = Table(
     Column("embedding_model", Text),
     Column("status", Text, nullable=False, server_default=text("'open'")),
     Column("merged_into_id", BigInteger, ForeignKey("postings.id", ondelete="RESTRICT")),
+    Column("possible_duplicate_of", BigInteger, ForeignKey("postings.id", ondelete="SET NULL")),
     Column("first_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("last_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("missed_polls", Integer, nullable=False, server_default=text("0")),

@@ -49,15 +49,20 @@ class Settings(BaseSettings):
     )
     # Per source: an adapter must not infer its `source` from a repo owner.
     scout_simplify_repos: str = Field(
-        default="SimplifyJobs/Summer2026-Internships,SimplifyJobs/Off-Season-Internships",
+        default="SimplifyJobs/Summer2027-Internships,SimplifyJobs/New-Grad-Positions",
         alias="SCOUT_SIMPLIFY_REPOS",
     )
-    scout_ouckah_repos: str = Field(
-        default="Ouckah/Summer2026-Internships", alias="SCOUT_OUCKAH_REPOS"
-    )
+    # Ouckah deleted both internship repos; empty means the source is skipped.
+    scout_ouckah_repos: str = Field(default="", alias="SCOUT_OUCKAH_REPOS")
 
     # Unauthenticated GitHub allows 60 requests/hour; a token raises it to 5000.
     github_token: SecretStr | None = Field(default=None, alias="GITHUB_TOKEN")
+
+    dedup_merge_threshold: float = Field(default=0.92, ge=0, le=1, alias="DEDUP_MERGE_THRESHOLD")
+    dedup_review_threshold: float = Field(default=0.80, ge=0, le=1, alias="DEDUP_REVIEW_THRESHOLD")
+    # §8: an ATS posting missing for 2 consecutive polls closes; one miss must not.
+    dedup_missed_poll_limit: int = Field(default=2, ge=2, alias="DEDUP_MISSED_POLL_LIMIT")
+    dedup_stale_after_days: int = Field(default=21, ge=1, alias="DEDUP_STALE_AFTER_DAYS")
 
     @model_validator(mode="after")
     def _retry_window_is_ordered(self) -> Settings:
@@ -65,6 +70,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SCOUT_RETRY_MAX_SECONDS must be >= SCOUT_RETRY_BASE_SECONDS, "
                 "otherwise the cap truncates the first delay"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _dedup_thresholds_are_ordered(self) -> Settings:
+        if self.dedup_merge_threshold < self.dedup_review_threshold:
+            raise ValueError(
+                "DEDUP_MERGE_THRESHOLD must be >= DEDUP_REVIEW_THRESHOLD, "
+                "otherwise 'review' never fires below the merge cutoff"
             )
         return self
 

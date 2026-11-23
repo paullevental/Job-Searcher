@@ -51,6 +51,9 @@ class CollectResult:
     postings: tuple[Posting, ...] = ()
     etag: str | None = None
     not_modified: bool = False
+    # 🔒 rows, kept apart from `postings`: a locked row is an observation that the
+    # posting closed, not an absence. Never upserted as open.
+    locked: tuple[Posting, ...] = ()
 
 
 class SourceAdapter(Protocol):

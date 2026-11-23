@@ -14,6 +14,7 @@ from offerradar_agents.scout.greenhouse import GreenhouseAdapter
 from offerradar_agents.scout.http import ScoutHttpClient, SourceResponseError
 from offerradar_agents.scout.lever import LeverAdapter
 from offerradar_agents.scout.ouckah import OuckahAdapter
+from offerradar_agents.scout.readme_table import parse_readme_table
 from offerradar_agents.scout.simplify import SimplifyAdapter
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -299,3 +300,14 @@ async def test_readme_fetch_sends_the_github_token_when_one_is_configured(
     sent = route.calls.last.request
     assert sent.headers["authorization"] == "Bearer ghp-not-a-real-token"
     assert sent.headers["accept"] == "application/vnd.github.raw"
+
+
+def test_simplify_normalizes_a_parsed_row_into_a_posting() -> None:
+    markdown = _load("simplify_readme.json")["markdown"]
+    row = parse_readme_table(markdown)[0]
+
+    posting = SimplifyAdapter(http=None, repo="example/repo").normalize(row)  # type: ignore[arg-type]
+
+    assert posting.normalized_title == "software engineer intern"
+    assert posting.canonical_url == "https://job-boards.greenhouse.io/examplecorp/jobs/4002001001"
+    assert posting.remote is True

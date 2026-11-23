@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from offerradar_agents.config import Settings
 from offerradar_agents.scout.github_readme import fetch_readme
 from offerradar_agents.scout.http import ScoutHttpClient
@@ -13,43 +11,7 @@ from offerradar_agents.scout.normalize import (
     normalized_job_title,
     parse_term,
 )
-
-
-class OuckahReadmeRow(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    company: str = Field(min_length=1)
-    role: str = Field(min_length=1)
-    location: str | None = None
-    application_url: str = Field(min_length=1)
-    date_posted: str | None = None
-    locked: bool = False
-
-
-def parse_readme_table(markdown: str) -> list[OuckahReadmeRow]:
-    rows: list[OuckahReadmeRow] = []
-    for line in markdown.splitlines():
-        line = line.strip()
-        if not line.startswith("|") or not line.endswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) != 5 or cells[0] in ("Company", "") or set(cells[0]) <= {"-", ":"}:
-            continue
-        company, role_raw, location, application, date = cells
-        locked = "🔒" in role_raw
-        start, end = application.find("("), application.find(")")
-        url = application[start + 1 : end] if 0 <= start < end else application
-        rows.append(
-            OuckahReadmeRow(
-                company=company,
-                role=role_raw.replace("🔒", "").strip(),
-                location=location or None,
-                application_url=url,
-                date_posted=date or None,
-                locked=locked,
-            )
-        )
-    return rows
+from offerradar_agents.scout.readme_table import ReadmeRow, parse_readme_table
 
 
 class OuckahAdapter:
@@ -72,7 +34,7 @@ class OuckahAdapter:
             self._http, repo=self._repo, etag=self._etag, settings=self._settings
         )
 
-    def normalize(self, raw: OuckahReadmeRow) -> Posting:
+    def normalize(self, raw: ReadmeRow) -> Posting:
         normalized_company = normalized_company_name(raw.company)
         normalized_title = normalized_job_title(raw.role)
         term = parse_term(raw.role)
@@ -97,9 +59,8 @@ class OuckahAdapter:
         if snapshot.not_modified:
             return CollectResult(etag=snapshot.etag, not_modified=True)
         rows = parse_readme_table(snapshot.markdown)
-        # A locked row is closed; Scout has no status field to mark it, so it is
-        # never submitted as an open posting.
         return CollectResult(
             postings=tuple(self.normalize(row) for row in rows if not row.locked),
+            locked=tuple(self.normalize(row) for row in rows if row.locked),
             etag=snapshot.etag,
         )

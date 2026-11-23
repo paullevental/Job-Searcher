@@ -40,6 +40,10 @@ Tightened by Paul, 2026-11-22. This overrides anything above it.
 Paul's instruction, 2026-11-22. **Be extremely concise. Sacrifice grammar for
 the sake of being concise.**
 
+- Every response, every prompt, no exceptions. Plans, explanations, reviews,
+  reports — all of it, not just code-adjacent replies.
+- Not a suggestion. Mandatory.
+
 ---
 
 ## Milestone retrospectives
@@ -53,6 +57,7 @@ per the Comments rule above.
 | M0 | Stack boots with one command, CI gates every merge | `docs/milestones/M0.md` |
 | M1 | §7 schema as versioned migrations | `docs/milestones/M1.md` |
 | M2 | Scout collects postings from four sources | `docs/milestones/M2.md` |
+| M3 | Dedup collapses duplicates, dead postings retire | `docs/milestones/M3.md` |
 
 Current acceptance-check state, build-environment facts and defect counts live
 in those files, not here — read the one for the milestone in question.

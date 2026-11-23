@@ -36,6 +36,9 @@ LEGAL_SUFFIXES: frozenset[str] = frozenset(
 TRACKING_PARAM_PREFIXES: tuple[str, ...] = ("utm_", "gh_src", "ref")
 
 _SEASONS: frozenset[str] = frozenset({"spring", "summer", "fall", "autumn", "winter"})
+# A class year, not a model or part number; leading years ("2027 early career
+# engineer") stay, because two class years there are two requisitions.
+_CLASS_YEAR_PREFIX: str = "20"
 
 
 def _fold(text: str) -> list[str]:
@@ -69,16 +72,19 @@ def normalized_company_name(raw_name: str) -> str:
     return " ".join(tokens)
 
 
-# Term removed: it is its own dedup_key field, so leaving it counts it twice.
+def _is_class_year(token: str) -> bool:
+    return token.isdigit() and len(token) == 4 and token.startswith(_CLASS_YEAR_PREFIX)
+
+
+# Term removed: it is its own dedup_key field, so leaving it counts it twice. An
+# ATS board appends the class year where an aggregator drops it, so a bare
+# trailing year goes too or the same req fails to match across the two.
 def normalized_job_title(raw_title: str) -> str:
     tokens = _fold(raw_title)
-    if (
-        len(tokens) >= 2
-        and tokens[-2] in _SEASONS
-        and tokens[-1].isdigit()
-        and len(tokens[-1]) == 4
-    ):
+    if len(tokens) >= 2 and tokens[-2] in _SEASONS and _is_class_year(tokens[-1]):
         tokens = tokens[:-2]
+    elif len(tokens) >= 2 and _is_class_year(tokens[-1]):
+        tokens = tokens[:-1]
     return " ".join(tokens)
 
 

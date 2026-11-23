@@ -1,0 +1,314 @@
+{
+  "note": "Real pairs, harvested 2026-11-22 (two runs) from a live Scout run against SimplifyJobs/Summer2027-Internships, SimplifyJobs/New-Grad-Positions and five Greenhouse boards (4210 postings, 552 companies). Titles are in normalized form (what normalized_job_title produces). `duplicate` is a human judgement of whether the two rows are the same job requisition. `company`, `sources` and `why` are provenance for that judgement and are not read by eval.py.",
+  "pairs": [
+    {
+      "id": "figma-phd-interaction",
+      "title_a": "phd intern software engineer interaction design",
+      "title_b": "phd intern software engineer interaction design",
+      "duplicate": true,
+      "company": "Figma",
+      "sources": "simplify|greenhouse",
+      "why": "same req; the board title carries the class year, the aggregator drops it",
+      "exact_key_match": true
+    },
+    {
+      "id": "figma-phd-graphics",
+      "title_a": "phd intern software engineer graphics",
+      "title_b": "phd intern software engineer graphics",
+      "duplicate": true,
+      "company": "Figma",
+      "sources": "simplify|greenhouse",
+      "why": "same req, class year only",
+      "exact_key_match": true
+    },
+    {
+      "id": "cloudflare-swe-intern-year",
+      "title_a": "software engineer intern",
+      "title_b": "software engineer intern",
+      "duplicate": true,
+      "company": "Cloudflare",
+      "sources": "simplify|greenhouse",
+      "why": "same req, class year only",
+      "exact_key_match": true
+    },
+    {
+      "id": "cloudflare-swe-intern-site",
+      "title_a": "software engineer intern",
+      "title_b": "software engineer intern 2027 austin tx",
+      "duplicate": true,
+      "company": "Cloudflare",
+      "sources": "simplify|greenhouse",
+      "why": "same req; the board title appends the office, the aggregator puts it in Location"
+    },
+    {
+      "id": "cloudflare-pm-intern-site",
+      "title_a": "product manager intern",
+      "title_b": "product manager intern 2027 london uk",
+      "duplicate": true,
+      "company": "Cloudflare",
+      "sources": "simplify|greenhouse",
+      "why": "same req, office suffix only"
+    },
+    {
+      "id": "newgrad-noun-form",
+      "title_a": "software engineer new grad",
+      "title_b": "software engineering new grad",
+      "duplicate": true,
+      "company": "Thales",
+      "sources": "simplify|simplify",
+      "why": "one req cross-listed in two SimplifyJobs repos, worded differently"
+    },
+    {
+      "id": "anduril-rank-senior",
+      "title_a": "bom sourcing engineer intelligence systems space active clearance",
+      "title_b": "senior bom sourcing engineer intelligence systems space active clearance",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different rank"
+    },
+    {
+      "id": "anduril-rank-staff",
+      "title_a": "dfx engineer mechanical fluid systems",
+      "title_b": "staff dfx engineer mechanical fluid systems",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different rank"
+    },
+    {
+      "id": "anduril-rank-lead",
+      "title_a": "electrical engineering technician",
+      "title_b": "lead electrical engineering technician",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different rank"
+    },
+    {
+      "id": "cloudflare-rank-senior",
+      "title_a": "commercial account executive",
+      "title_b": "senior commercial account executive",
+      "duplicate": false,
+      "company": "Cloudflare",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different rank"
+    },
+    {
+      "id": "cloudflare-rank-principal",
+      "title_a": "customer experience manager",
+      "title_b": "principal customer experience manager",
+      "duplicate": false,
+      "company": "Cloudflare",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different rank"
+    },
+    {
+      "id": "addepar-rank-sr",
+      "title_a": "enterprise solutions consultant",
+      "title_b": "sr enterprise solutions consultant",
+      "duplicate": false,
+      "company": "Addepar",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different rank"
+    },
+    {
+      "id": "anduril-experience-band",
+      "title_a": "electrical engineer hardware platform 2 years of experience",
+      "title_b": "electrical engineer hardware platform 5 years of experience",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different experience band"
+    },
+    {
+      "id": "anduril-class-year",
+      "title_a": "2026 early career electrical engineer",
+      "title_b": "2027 early career electrical engineer",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, consecutive class years; a year differs in one digit"
+    },
+    {
+      "id": "anduril-program-variant",
+      "title_a": "product quality engineer dive ld",
+      "title_b": "product quality engineer dive xl",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs on two different vehicle programs"
+    },
+    {
+      "id": "anduril-discipline",
+      "title_a": "electrical design engineer air dominance and strike",
+      "title_b": "electrical test engineer air dominance and strike",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "design and test are separate reqs"
+    },
+    {
+      "id": "anduril-specialisation",
+      "title_a": "software engineer infrastructure",
+      "title_b": "software engineer ml infrastructure",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, one specialised"
+    },
+    {
+      "id": "anduril-plural",
+      "title_a": "system engineer",
+      "title_b": "systems engineer",
+      "duplicate": false,
+      "company": "Anduril",
+      "sources": "greenhouse|greenhouse",
+      "why": "a board lists each req once, so two rows on one board are two reqs"
+    },
+    {
+      "id": "cloudflare-language",
+      "title_a": "business development representative arabic speaking",
+      "title_b": "business development representative turkish speaking",
+      "duplicate": false,
+      "company": "Cloudflare",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different language market"
+    },
+    {
+      "id": "cloudflare-region",
+      "title_a": "deal desk manager",
+      "title_b": "deal desk manager apac",
+      "duplicate": false,
+      "company": "Cloudflare",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, one region-scoped"
+    },
+    {
+      "id": "cloudflare-office",
+      "title_a": "senior customer engineer majors ne",
+      "title_b": "senior customer engineer majors nyc",
+      "duplicate": false,
+      "company": "Cloudflare",
+      "sources": "greenhouse|greenhouse",
+      "why": "separate reqs, different office"
+    },
+    {
+      "id": "cloudflare-intern-vs-full",
+      "title_a": "software engineer intern",
+      "title_b": "software engineer",
+      "duplicate": false,
+      "company": "Cloudflare",
+      "sources": "simplify|greenhouse",
+      "why": "an internship is not the full-time req"
+    },
+    {
+      "id": "figma-cross-discipline",
+      "title_a": "phd intern software engineer graphics",
+      "title_b": "phd intern software engineer interaction design",
+      "duplicate": false,
+      "company": "Figma",
+      "sources": "simplify|greenhouse",
+      "why": "two different PhD internships at one company"
+    },
+    {
+      "id": "honeywell-specialisation",
+      "title_a": "software engineer intern",
+      "title_b": "ai software engineer intern",
+      "duplicate": false,
+      "company": "Honeywell Aerospace",
+      "sources": "simplify|simplify",
+      "why": "the AI role is its own req"
+    },
+    {
+      "id": "stripe-phd",
+      "title_a": "machine learning engineer intern",
+      "title_b": "phd machine learning engineer intern",
+      "duplicate": false,
+      "company": "Stripe",
+      "sources": "simplify|simplify",
+      "why": "the PhD track is its own req"
+    },
+    {
+      "id": "paypal-phd",
+      "title_a": "machine learning engineer intern",
+      "title_b": "machine learning engineer phd intern",
+      "duplicate": false,
+      "company": "PayPal",
+      "sources": "simplify|simplify",
+      "why": "the PhD track is its own req"
+    },
+    {
+      "id": "caci-language",
+      "title_a": "entry level software engineer",
+      "title_b": "entry level c software engineer",
+      "duplicate": false,
+      "company": "CACI",
+      "sources": "simplify|simplify",
+      "why": "the C role is its own req"
+    },
+    {
+      "id": "eai-platform",
+      "title_a": "entry level software developer",
+      "title_b": "entry level net software developer",
+      "duplicate": false,
+      "company": "EAi Technologies",
+      "sources": "simplify|simplify",
+      "why": "the .NET role is its own req"
+    },
+    {
+      "id": "spacex-programme",
+      "title_a": "software engineer new grad software starlink",
+      "title_b": "software engineer new grad software starship",
+      "duplicate": false,
+      "company": "SpaceX",
+      "sources": "simplify|simplify",
+      "why": "two vehicle programmes; the titles differ only in the programme name"
+    },
+    {
+      "id": "tiktok-team",
+      "title_a": "geo content product manager intern",
+      "title_b": "poi content product manager intern",
+      "duplicate": false,
+      "company": "TikTok",
+      "sources": "simplify|simplify",
+      "why": "two teams"
+    },
+    {
+      "id": "bytedance-level",
+      "title_a": "research scientist intern video and edge multimedia lab",
+      "title_b": "research scientist new grad video and edge multimedia lab",
+      "duplicate": false,
+      "company": "ByteDance",
+      "sources": "simplify|simplify",
+      "why": "an internship is not the new-grad req"
+    },
+    {
+      "id": "ice-noun-form",
+      "title_a": "software engineer intern",
+      "title_b": "software engineering intern",
+      "duplicate": true,
+      "company": "Intercontinental Exchange",
+      "sources": "simplify|simplify",
+      "why": "one req, two wordings"
+    },
+    {
+      "id": "tyler-noun-form",
+      "title_a": "software developer intern",
+      "title_b": "software development intern",
+      "duplicate": true,
+      "company": "Tyler Technologies",
+      "sources": "simplify|simplify",
+      "why": "one req, two wordings"
+    },
+    {
+      "id": "boozallen-class-year",
+      "title_a": "summer games data scientist intern",
+      "title_b": "2027 summer games data scientist intern",
+      "duplicate": true,
+      "company": "Booz Allen",
+      "sources": "simplify|simplify",
+      "why": "one req; a leading class year is not a qualifier"
+    }
+  ]
+}

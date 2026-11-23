@@ -10,6 +10,12 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from offerradar_agents.dedup.candidates import resolve_duplicates
+from offerradar_agents.dedup.staleness import (
+    apply_poll_result,
+    mark_locked_stale,
+    sweep_stale_by_age,
+)
 from offerradar_agents.scout import repository
 from offerradar_agents.scout.alerts import AlertKind, source_alert
 from offerradar_agents.scout.blocklist import BannedDomainError
@@ -38,6 +44,12 @@ class CursorStore(Protocol):
     @property
     def label(self) -> str: ...
 
+    # None for a list spanning many companies; set for a single company's board.
+    # The staleness sweep scopes to it, or polling one board counts every other
+    # board of the same provider as a miss.
+    @property
+    def company_id(self) -> int | None: ...
+
     async def load(self, session: AsyncSession) -> str | None: ...
 
     async def save(self, session: AsyncSession, etag: str | None) -> None: ...
@@ -51,6 +63,10 @@ class ListCursor:
     @property
     def label(self) -> str:
         return self.repo
+
+    @property
+    def company_id(self) -> int | None:
+        return None
 
     async def load(self, session: AsyncSession) -> str | None:
         return await repository.source_cursor_etag(
@@ -67,10 +83,15 @@ class ListCursor:
 class AtsBoardCursor:
     board_id: int
     board_token: str
+    board_company_id: int | None = None
 
     @property
     def label(self) -> str:
         return self.board_token
+
+    @property
+    def company_id(self) -> int | None:
+        return self.board_company_id
 
     async def load(self, session: AsyncSession) -> str | None:
         return await repository.ats_board_etag(session, board_id=self.board_id)
@@ -119,13 +140,37 @@ async def run_target(
         await target.cursor.save(session, collected.etag)
         return SourceOutcome(source, label, not_modified=True)
 
-    if not collected.postings:
-        source_alert(AlertKind.EMPTY, source, run_id=run_id, detail=f"{label}: 200 with no rows")
-        await target.cursor.save(session, collected.etag)
-        return SourceOutcome(source, label, alert=AlertKind.EMPTY)
+    locked_keys = [posting.dedup_key for posting in collected.locked]
 
-    for posting in collected.postings:
-        await repository.upsert_posting(session, posting)
+    if not collected.postings:
+        # Only empty when nothing at all came back. A list whose rows have all gone
+        # 🔒 is a source reporting closures, not a source that failed.
+        if not locked_keys:
+            source_alert(
+                AlertKind.EMPTY, source, run_id=run_id, detail=f"{label}: 200 with no rows"
+            )
+            await target.cursor.save(session, collected.etag)
+            return SourceOutcome(source, label, alert=AlertKind.EMPTY)
+        await mark_locked_stale(session, dedup_keys=locked_keys)
+        await target.cursor.save(session, collected.etag)
+        return SourceOutcome(source, label)
+
+    # Reached only past the 304 and empty returns above, which is what makes this
+    # a real observation: apply_poll_result refuses an empty seen-set.
+    seen_ids = [await repository.upsert_posting(session, posting) for posting in collected.postings]
+    # Before the miss sweep: a 🔒 row is an observation, and retiring it first
+    # keeps it out of the open-only candidate set the sweep counts misses over.
+    await mark_locked_stale(session, dedup_keys=locked_keys)
+    await apply_poll_result(
+        session,
+        source=source,
+        seen_posting_ids=seen_ids,
+        company_id=target.cursor.company_id,
+    )
+    # After the sweep: a merge sets status='merged', which would drop the row out
+    # of the sweep's open-only candidate set.
+    for posting_id in seen_ids:
+        await resolve_duplicates(session, posting_id=posting_id)
     await target.cursor.save(session, collected.etag)
     return SourceOutcome(source, label, postings_seen=len(collected.postings))
 
@@ -149,4 +194,14 @@ async def run_scout(
             )
             outcome = SourceOutcome(source, label, alert=AlertKind.FAILED)
         outcomes.append(outcome)
+
+    # Age-out is not per-source: a posting goes quiet across every source at once.
+    # Its own transaction, so one source's write failure cannot skip it.
+    try:
+        async with session_factory() as session, session.begin():
+            await sweep_stale_by_age(session)
+    except WRITE_ERRORS as exc:
+        source_alert(
+            AlertKind.FAILED, "staleness", run_id=run_id, detail=f"age sweep: {type(exc).__name__}"
+        )
     return outcomes

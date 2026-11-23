@@ -74,7 +74,11 @@ async def build_targets(
         )
 
     for board in await repository.list_ats_boards(session, providers=ATS_PROVIDERS):
-        board_cursor = AtsBoardCursor(board_id=board.id, board_token=board.board_token)
+        board_cursor = AtsBoardCursor(
+            board_id=board.id,
+            board_token=board.board_token,
+            board_company_id=board.company_id,
+        )
         board_etag = await board_cursor.load(session)
         adapter: SourceAdapter
         if board.provider == GreenhouseAdapter.source:
