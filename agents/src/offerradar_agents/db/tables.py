@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -15,9 +16,12 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.types import NullType
+from sqlalchemy.dialects.postgresql import REAL
 
 METADATA = MetaData()
+
+# nomic-embed-text. Change here only; re-embed on any model change (AGENTS.md §7).
+EMBEDDING_DIM = 768
 
 companies = Table(
     "companies",
@@ -66,8 +70,7 @@ postings = Table(
     Column("dedup_key", Text, nullable=False, unique=True),
     Column("description", Text),
     Column("description_hash", Text),
-    # vector(768); M4 replaces NullType with a real pgvector type.
-    Column("embedding", NullType),
+    Column("embedding", Vector(EMBEDDING_DIM)),
     Column("embedding_model", Text),
     Column("status", Text, nullable=False, server_default=text("'open'")),
     Column("merged_into_id", BigInteger, ForeignKey("postings.id", ondelete="RESTRICT")),
@@ -104,4 +107,37 @@ source_cursors = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     UniqueConstraint("source", "cursor_key", name="uq_source_cursors_source_key"),
+)
+
+resume_chunks = Table(
+    "resume_chunks",
+    METADATA,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("version", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("text", Text, nullable=False),
+    Column("embedding", Vector(EMBEDDING_DIM)),
+    Column("embedding_model", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("version", "ordinal", name="uq_resume_chunks_version_ordinal"),
+)
+
+matches = Table(
+    "matches",
+    METADATA,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column(
+        "posting_id",
+        BigInteger,
+        ForeignKey("postings.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+    Column("similarity", REAL, nullable=False),
+    Column("embedding_model", Text, nullable=False),
+    Column("resume_version", Text, nullable=False),
+    Column("selected_for_analysis", Boolean, nullable=False, server_default=text("false")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

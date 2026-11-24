@@ -1,0 +1,13 @@
+{
+  "placeholder": true,
+  "embedding_model": "placeholder-3d",
+  "chunks": [[1, 0, 0], [0, 1, 0]],
+  "postings": [
+    {"id": 1, "vector": [1, 0, 0], "rating": 5, "holdout": false},
+    {"id": 2, "vector": [0.8, 0, 0.6], "rating": 4, "holdout": false},
+    {"id": 5, "vector": [0.6, 0, 0.8], "rating": 3, "holdout": false},
+    {"id": 6, "vector": [0.2, 0, 0.98], "rating": 1, "holdout": false},
+    {"id": 3, "vector": [0.5, 0, 0.866], "rating": 2, "holdout": true},
+    {"id": 4, "vector": [0, 0, 1], "rating": 1, "holdout": true}
+  ]
+}

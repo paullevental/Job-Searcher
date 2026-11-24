@@ -27,6 +27,8 @@ NETWORK_IMPORTS = (
     "offerradar_agents.scout.ouckah",
     "offerradar_agents.scout.simplify",
     "offerradar_agents.scout.assemble",
+    "offerradar_agents.embeddings.ollama",
+    "offerradar_agents.dedup.record",
 )
 
 

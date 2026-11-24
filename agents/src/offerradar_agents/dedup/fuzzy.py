@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections import Counter
-from difflib import SequenceMatcher
+from collections.abc import Sequence
 from typing import Any, Final, Literal, cast
 
 from sqlalchemy import update
@@ -24,8 +25,9 @@ FuzzyVerdict = Literal["merge", "review", "distinct"]
 INFLECTION_PREFIX_RATIO: Final = 0.6
 
 
-def similarity_score(title_a: str, title_b: str) -> float:
-    return SequenceMatcher(None, title_a, title_b).ratio()
+def similarity_score(vector_a: Sequence[float], vector_b: Sequence[float]) -> float:
+    norms = math.hypot(*vector_a) * math.hypot(*vector_b)
+    return 0.0 if norms == 0 else math.sumprod(vector_a, vector_b) / norms
 
 
 def classify(score: float) -> FuzzyVerdict:
@@ -50,9 +52,7 @@ def _is_class_year(token: str) -> bool:
     return token.isdigit() and len(token) == 4 and token.startswith("20")
 
 
-# Tokens one title carries and the other does not, after cancelling class years
-# and inflections of the same word. A score alone cannot see these: "entry level
-# c software engineer" scores 0.95 against "entry level software engineer".
+# Tokens on one side only, after cancelling class years and inflections; a score barely sees one.
 def unmatched_tokens(title_a: str, title_b: str) -> tuple[str, ...]:
     counts_a, counts_b = Counter(title_a.split()), Counter(title_b.split())
     only_a = [t for t in (counts_a - counts_b).elements() if not _is_class_year(t)]
@@ -65,10 +65,8 @@ def unmatched_tokens(title_a: str, title_b: str) -> tuple[str, ...]:
     return tuple(only_a + only_b)
 
 
-# Caller is responsible for scoping to same-company, open-only pairs (§8.3) --
-# this function only scores two titles.
-def fuzzy_match(title_a: str, title_b: str) -> tuple[FuzzyVerdict, float]:
-    score = similarity_score(title_a, title_b)
+# Caller scopes to same-company, open-only pairs (§8.3) and computes the score.
+def fuzzy_match(title_a: str, title_b: str, *, score: float) -> FuzzyVerdict:
     verdict = classify(score)
     # A qualifier on one side only ("ai", "phd", "starlink") means two
     # requisitions. Demoted, not dropped: Paul still sees the pair.
@@ -82,7 +80,7 @@ def fuzzy_match(title_a: str, title_b: str) -> tuple[FuzzyVerdict, float]:
             score,
             extra={"event": EVENT, "verdict": verdict, "score": score},
         )
-    return verdict, score
+    return verdict
 
 
 async def merge_postings(session: AsyncSession, *, duplicate_id: int, canonical_id: int) -> None:

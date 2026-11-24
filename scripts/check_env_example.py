@@ -35,6 +35,9 @@ PATTERNS = (
     re.compile(r"""process\.env(?:\.|\[["'])([A-Z][A-Z0-9_]*)"""),
 )
 
+# Set by the CI runner, never by a developer.
+RUNNER_PROVIDED = {"CI"}
+
 SEARCH_SUFFIXES = {".py", ".java", ".ts", ".tsx", ".js", ".jsx", ".yml", ".yaml"}
 
 
@@ -74,7 +77,7 @@ def main() -> int:
     docs = documented()
     refs = referenced()
 
-    missing = {name: locs for name, locs in sorted(refs.items()) if name not in docs}
+    missing = {name: locs for name, locs in sorted(refs.items()) if name not in docs | RUNNER_PROVIDED}
     unused = sorted(docs - set(refs))
 
     if unused:

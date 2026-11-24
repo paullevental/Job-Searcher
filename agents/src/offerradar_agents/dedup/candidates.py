@@ -14,8 +14,10 @@ from offerradar_agents.dedup.fuzzy import (
     flag_possible_duplicate,
     fuzzy_match,
     merge_postings,
+    similarity_score,
 )
 from offerradar_agents.dedup.staleness import ATS_SOURCES
+from offerradar_agents.embeddings.provider import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +123,10 @@ def _canonical_first(
     return b, a
 
 
-async def resolve_duplicates(session: AsyncSession, *, posting_id: int) -> DedupDecision | None:
+# Embeds before any write: a caller catching EMBEDDING_ERRORS keeps a clean transaction.
+async def resolve_duplicates(
+    session: AsyncSession, provider: EmbeddingProvider, *, posting_id: int
+) -> DedupDecision | None:
     subject = await load_open_posting(session, posting_id)
     if subject is None:
         return None
@@ -134,16 +139,17 @@ async def resolve_duplicates(session: AsyncSession, *, posting_id: int) -> Dedup
     if not siblings:
         return None
 
-    best: CandidatePosting | None = None
-    best_score = -1.0
-    for sibling in siblings:
-        _, score = fuzzy_match(subject.normalized_title, sibling.normalized_title)
-        if score > best_score:
-            best, best_score = sibling, score
-    if best is None:
-        return None
+    titles = list(
+        dict.fromkeys([subject.normalized_title, *(s.normalized_title for s in siblings)])
+    )
+    vectors = dict(zip(titles, await provider.embed(titles), strict=True))
+    subject_vector = vectors[subject.normalized_title]
+    score, best = max(
+        ((similarity_score(subject_vector, vectors[s.normalized_title]), s) for s in siblings),
+        key=lambda scored: scored[0],
+    )
 
-    verdict, score = fuzzy_match(subject.normalized_title, best.normalized_title)
+    verdict = fuzzy_match(subject.normalized_title, best.normalized_title, score=score)
     if verdict == "distinct":
         return None
 

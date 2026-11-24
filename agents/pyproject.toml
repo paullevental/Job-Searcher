@@ -15,6 +15,7 @@ dependencies = [
     # robots.txt parsing. urllib.robotparser is stdlib but blocking and does
     # not handle wildcards or crawl-delay; Protego is what Scrapy uses.
     "protego>=0.3",
+    "pgvector>=0.5.1",
 ]
 
 # PEP 735 dependency group, not an optional-dependencies extra: `uv sync`

@@ -4,6 +4,7 @@ import respx
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from offerradar_agents.config import Settings
+from offerradar_agents.embeddings.fake import FakeEmbeddingProvider
 from offerradar_agents.scout import repository
 from offerradar_agents.scout.assemble import (
     build_http_client,
@@ -85,7 +86,7 @@ async def test_a_stored_etag_reaches_the_request_as_if_none_match(
         # policy=None is one attempt: ExponentialBackoff's body is Paul's.
         async with ScoutHttpClient(settings=settings) as http:
             targets = await build_targets(db, http=http, settings=settings)
-            outcomes = await run_scout(targets, factory)
+            outcomes = await run_scout(targets, factory, provider=FakeEmbeddingProvider())
 
     assert route.calls.last.request.headers["if-none-match"] == 'W/"stored"'
     assert [outcome.not_modified for outcome in outcomes] == [True]
@@ -124,7 +125,7 @@ async def test_collect_all_polls_every_configured_list(
         allow_robots(router)
         router.get(SIMPLIFY_URL).respond(304, headers={"ETag": 'W/"s"'})
         router.get(OUCKAH_URL).respond(304, headers={"ETag": 'W/"o"'})
-        outcomes = await collect_all(factory, settings=settings)
+        outcomes = await collect_all(factory, settings=settings, provider=FakeEmbeddingProvider())
 
     assert [outcome.source for outcome in outcomes] == ["simplify", "ouckah"]
     assert all(outcome.not_modified for outcome in outcomes)

@@ -18,6 +18,7 @@ PSQL := $(COMPOSE) exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$$PO
 
 .PHONY: help env hooks up down down-v logs ps \
         migrate migrate-info seed seed-volume unseed-volume explain db-shell \
+        ollama-pull embed-resume record-dedup-vectors \
         test test-agents test-agents-offline test-workflow test-web \
         lint lint-agents lint-workflow lint-web \
         fmt fmt-agents fmt-workflow fmt-web \
@@ -94,6 +95,20 @@ explain: ## Show EXPLAIN ANALYZE for the staleness query, indexed vs. forced seq
 
 db-shell: ## Open an interactive psql shell in the postgres container
 	$(COMPOSE) exec -it postgres sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+ollama-pull: ## Pull EMBEDDING_MODEL (from .env) into the host's native Ollama
+	@command -v ollama >/dev/null 2>&1 || { echo "Install Ollama: https://ollama.com/download"; exit 1; }
+	set -a && . ./.env && set +a && ollama pull "$$EMBEDDING_MODEL"
+
+embed-resume: ## Chunk and embed resume.md once per version (needs postgres up + native Ollama)
+	set -a && . ./.env && set +a && cd agents && \
+		DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
+		OLLAMA_URL=http://localhost:$$OLLAMA_PORT \
+		$(UV) run python -m offerradar_agents.matcher embed-resume --resume ../resume.md
+
+record-dedup-vectors: ## Embed dedup_pairs.json titles via local Ollama into a test fixture
+	set -a && . ./.env && set +a && cd agents && OLLAMA_URL=http://localhost:$$OLLAMA_PORT \
+		$(UV) run python -m offerradar_agents.dedup.record --out tests/fixtures/dedup_pair_vectors.json
 
 # --- tests -----------------------------------------------------------------
 

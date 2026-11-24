@@ -16,6 +16,8 @@ from offerradar_agents.dedup.staleness import (
     mark_locked_stale,
     sweep_stale_by_age,
 )
+from offerradar_agents.embeddings.errors import EMBEDDING_ERRORS
+from offerradar_agents.embeddings.provider import EmbeddingProvider
 from offerradar_agents.scout import repository
 from offerradar_agents.scout.alerts import AlertKind, source_alert
 from offerradar_agents.scout.blocklist import BannedDomainError
@@ -115,10 +117,12 @@ class SourceOutcome:
     alert: AlertKind | None = None
 
 
+# A dedup embedding failure skips the cursor save, so the next poll is a 200 and re-runs dedup.
 async def run_target(
     target: ScoutTarget,
     session: AsyncSession,
     *,
+    provider: EmbeddingProvider,
     run_id: str | None = None,
 ) -> SourceOutcome:
     source = target.adapter.source
@@ -169,8 +173,14 @@ async def run_target(
     )
     # After the sweep: a merge sets status='merged', which would drop the row out
     # of the sweep's open-only candidate set.
-    for posting_id in seen_ids:
-        await resolve_duplicates(session, posting_id=posting_id)
+    try:
+        for posting_id in seen_ids:
+            await resolve_duplicates(session, provider, posting_id=posting_id)
+    except EMBEDDING_ERRORS as exc:
+        source_alert(
+            AlertKind.FAILED, "dedup", run_id=run_id, detail=f"{label}: {type(exc).__name__}"
+        )
+        return SourceOutcome(source, label, postings_seen=len(collected.postings))
     await target.cursor.save(session, collected.etag)
     return SourceOutcome(source, label, postings_seen=len(collected.postings))
 
@@ -179,6 +189,7 @@ async def run_scout(
     targets: list[ScoutTarget],
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    provider: EmbeddingProvider,
     run_id: str | None = None,
 ) -> list[SourceOutcome]:
     outcomes: list[SourceOutcome] = []
@@ -187,7 +198,7 @@ async def run_scout(
         label = target.cursor.label
         try:
             async with session_factory() as session, session.begin():
-                outcome = await run_target(target, session, run_id=run_id)
+                outcome = await run_target(target, session, provider=provider, run_id=run_id)
         except WRITE_ERRORS as exc:
             source_alert(
                 AlertKind.FAILED, source, run_id=run_id, detail=f"{label}: {type(exc).__name__}"

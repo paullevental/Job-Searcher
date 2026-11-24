@@ -16,24 +16,26 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def test_identical_titles_score_one() -> None:
-    assert similarity_score("software engineer intern", "software engineer intern") == 1.0
+def test_parallel_vectors_score_one() -> None:
+    assert similarity_score([0.6, 0.8], [3.0, 4.0]) == pytest.approx(1.0)
 
 
 def test_score_is_symmetric() -> None:
-    a, b = "backend engineer intern", "backend engineering intern"
+    a, b = [0.2, 0.9, 0.1], [0.5, 0.4, 0.3]
 
     assert similarity_score(a, b) == similarity_score(b, a)
 
 
-def test_unrelated_titles_score_below_review_threshold() -> None:
-    score = similarity_score("frontend developer intern", "machine learning intern")
-
-    assert score < get_settings().dedup_review_threshold
+def test_orthogonal_vectors_score_zero() -> None:
+    assert similarity_score([1.0, 0.0], [0.0, 1.0]) == 0.0
 
 
-def test_score_is_bounded() -> None:
-    assert 0.0 <= similarity_score("", "software engineer intern") <= 1.0
+def test_opposite_vectors_score_minus_one() -> None:
+    assert similarity_score([1.0, 2.0], [-1.0, -2.0]) == pytest.approx(-1.0)
+
+
+def test_a_zero_vector_scores_zero_instead_of_dividing_by_zero() -> None:
+    assert similarity_score([0.0, 0.0], [1.0, 0.0]) == 0.0
 
 
 def test_classify_uses_both_thresholds() -> None:
@@ -43,14 +45,6 @@ def test_classify_uses_both_thresholds() -> None:
     assert classify(settings.dedup_merge_threshold) == "merge"
     assert classify(settings.dedup_review_threshold) == "review"
     assert classify(settings.dedup_review_threshold - 0.01) == "distinct"
-
-
-def test_abbreviation_is_missed_by_string_similarity() -> None:
-    # Documents the M4 trigger: SequenceMatcher compares character runs, so an
-    # abbreviation of a real duplicate scores as distinct. docs/TODO.md M3.
-    score = similarity_score("swe intern", "software engineering intern")
-
-    assert classify(score) == "distinct"
 
 
 def test_an_inflected_word_is_not_an_unmatched_token() -> None:
@@ -76,16 +70,25 @@ def test_two_programme_names_are_not_inflections() -> None:
 
 
 def test_a_qualifier_demotes_a_merge_to_review() -> None:
-    verdict, score = fuzzy_match("entry level software engineer", "entry level c software engineer")
+    verdict = fuzzy_match(
+        "entry level software engineer", "entry level c software engineer", score=1.0
+    )
 
-    assert score >= get_settings().dedup_merge_threshold
     assert verdict == "review"
 
 
 def test_an_inflection_still_merges() -> None:
-    verdict, _ = fuzzy_match("software engineer intern", "software engineering intern")
+    verdict = fuzzy_match("software engineer intern", "software engineering intern", score=1.0)
 
     assert verdict == "merge"
+
+
+def test_a_qualifier_does_not_lift_a_distinct_score() -> None:
+    score = get_settings().dedup_review_threshold - 0.01
+
+    assert fuzzy_match("ai software engineer intern", "software engineer intern", score=score) == (
+        "distinct"
+    )
 
 
 def test_a_repeated_token_is_counted_not_set_matched() -> None:

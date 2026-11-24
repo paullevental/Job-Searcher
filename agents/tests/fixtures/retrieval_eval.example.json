@@ -1,0 +1,13 @@
+{
+  "placeholder": true,
+  "embedding_model": "placeholder-3d",
+  "chunks": [
+    {"ordinal": 0, "vector": [1, 0, 0]},
+    {"ordinal": 1, "vector": [0, 1, 0]},
+    {"ordinal": 2, "vector": [0, 0, 1]}
+  ],
+  "queries": [
+    {"id": "q1", "text": "placeholder query about chunk zero", "vector": [0.9, 0.1, 0], "relevant": [0]},
+    {"id": "q2", "text": "placeholder query about chunks one and two", "vector": [0, 0.7, 0.7], "relevant": [1, 2]}
+  ]
+}

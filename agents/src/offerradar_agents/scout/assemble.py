@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
+
 import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from offerradar_agents.config import Settings, get_settings
+from offerradar_agents.embeddings.cache import CachingEmbeddingProvider
+from offerradar_agents.embeddings.latch import LatchingEmbeddingProvider
+from offerradar_agents.embeddings.ollama import OllamaEmbeddingProvider
+from offerradar_agents.embeddings.provider import EmbeddingProvider
+from offerradar_agents.matcher.postings import embed_pending_postings
 from offerradar_agents.scout import repository
 from offerradar_agents.scout.greenhouse import GreenhouseAdapter
 from offerradar_agents.scout.http import ScoutHttpClient
@@ -95,10 +102,26 @@ async def collect_all(
     *,
     settings: Settings | None = None,
     redis_client: redis.Redis | None = None,
+    provider: EmbeddingProvider | None = None,
     run_id: str | None = None,
 ) -> list[SourceOutcome]:
     resolved = settings if settings is not None else get_settings()
-    async with build_http_client(settings=resolved, redis_client=redis_client) as http:
+    async with AsyncExitStack() as stack:
+        http = await stack.enter_async_context(
+            build_http_client(settings=resolved, redis_client=redis_client)
+        )
+        if provider is None:
+            provider = await stack.enter_async_context(OllamaEmbeddingProvider(settings=resolved))
+        latched = LatchingEmbeddingProvider(provider)
         async with session_factory() as session:
             targets = await build_targets(session, http=http, settings=resolved)
-        return await run_scout(targets, session_factory, run_id=run_id)
+        outcomes = await run_scout(
+            targets,
+            session_factory,
+            provider=CachingEmbeddingProvider(latched),
+            run_id=run_id,
+        )
+        await embed_pending_postings(
+            session_factory, latched, model=resolved.embedding_model, run_id=run_id
+        )
+        return outcomes

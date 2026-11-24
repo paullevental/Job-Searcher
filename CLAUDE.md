@@ -58,6 +58,7 @@ per the Comments rule above.
 | M1 | §7 schema as versioned migrations | `docs/milestones/M1.md` |
 | M2 | Scout collects postings from four sources | `docs/milestones/M2.md` |
 | M3 | Dedup collapses duplicates, dead postings retire | `docs/milestones/M3.md` |
+| M4 | Rank postings against the resume with free local embeddings | `docs/milestones/M4.md` |
 
 Current acceptance-check state, build-environment facts and defect counts live
 in those files, not here — read the one for the milestone in question.

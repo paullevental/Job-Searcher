@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import math
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -10,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from offerradar_agents.config import get_settings
 from offerradar_agents.db import tables
 from offerradar_agents.dedup.candidates import open_siblings, resolve_duplicates
+from offerradar_agents.embeddings.provider import Vector
 from offerradar_agents.scout import repository
 from offerradar_agents.scout.models import Posting
 
@@ -17,6 +20,41 @@ SOURCE = "greenhouse"
 # One board lists each requisition once, so open_siblings refuses two rows that
 # share an ATS board. A pair that can actually be a duplicate is cross-source.
 LIST_SOURCE = "simplify"
+
+
+def review_band_vector() -> Vector:
+    settings = get_settings()
+    cosine = (settings.dedup_merge_threshold + settings.dedup_review_threshold) / 2
+    return [cosine, math.sqrt(1 - cosine * cosine), 0.0]
+
+
+# Hand-placed vectors: a merge pair shares one, a review pair sits between the
+# thresholds, and a distinct pair is orthogonal.
+class TitleVectors:
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    async def embed(self, texts: Sequence[str]) -> list[Vector]:
+        self.calls.append(list(texts))
+        table = {
+            "backend engineer intern": [1.0, 0.0, 0.0],
+            "backend engineering intern": [1.0, 0.0, 0.0],
+            "product manager intern": [1.0, 0.0, 0.0],
+            "product management intern": review_band_vector(),
+            "machine learning intern": [1.0, 0.0, 0.0],
+            "frontend developer intern": [0.0, 0.0, 1.0],
+            "software engineer intern": [0.0, 1.0, 0.0],
+            "software engineering intern": [0.0, 1.0, 0.0],
+            "data engineer intern": [0.0, 0.0, 1.0],
+            "systems engineer": [0.0, 1.0, 0.0],
+            "system engineer": [0.0, 1.0, 0.0],
+        }
+        return [table[text] for text in texts]
+
+
+@pytest.fixture
+def provider() -> TitleVectors:
+    return TitleVectors()
 
 
 def make_posting(title: str, source: str = SOURCE, **overrides: object) -> Posting:
@@ -65,13 +103,15 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-async def test_no_siblings_means_no_decision(db: AsyncSession) -> None:
+async def test_no_siblings_means_no_decision(db: AsyncSession, provider: TitleVectors) -> None:
     posting_id = await repository.upsert_posting(db, make_posting("software engineer intern"))
 
-    assert await resolve_duplicates(db, posting_id=posting_id) is None
+    assert await resolve_duplicates(db, provider, posting_id=posting_id) is None
 
 
-async def test_siblings_are_scoped_to_the_same_company(db: AsyncSession) -> None:
+async def test_siblings_are_scoped_to_the_same_company(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     mine = await repository.upsert_posting(db, make_posting("software engineer intern"))
     await repository.upsert_posting(
         db,
@@ -82,15 +122,15 @@ async def test_siblings_are_scoped_to_the_same_company(db: AsyncSession) -> None
         ),
     )
 
-    assert await resolve_duplicates(db, posting_id=mine) is None
+    assert await resolve_duplicates(db, provider, posting_id=mine) is None
 
 
-async def test_the_older_posting_is_canonical(db: AsyncSession) -> None:
+async def test_the_older_posting_is_canonical(db: AsyncSession, provider: TitleVectors) -> None:
     older = await repository.upsert_posting(db, make_posting("backend engineer intern"))
     await age(db, older, days=20)
     newer = await repository.upsert_posting(db, listed("backend engineering intern"))
 
-    decision = await resolve_duplicates(db, posting_id=newer)
+    decision = await resolve_duplicates(db, provider, posting_id=newer)
 
     assert decision is not None
     assert decision.verdict == "merge"
@@ -100,37 +140,43 @@ async def test_the_older_posting_is_canonical(db: AsyncSession) -> None:
     assert await read(db, older) == ("open", None, None)
 
 
-async def test_merge_direction_is_the_same_whichever_row_is_resolved(db: AsyncSession) -> None:
+async def test_merge_direction_is_the_same_whichever_row_is_resolved(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     older = await repository.upsert_posting(db, make_posting("backend engineer intern"))
     await age(db, older, days=20)
     newer = await repository.upsert_posting(db, listed("backend engineering intern"))
 
-    decision = await resolve_duplicates(db, posting_id=older)
+    decision = await resolve_duplicates(db, provider, posting_id=older)
 
     assert decision is not None
     assert decision.canonical_id == older
     assert decision.duplicate_id == newer
 
 
-async def test_identical_first_seen_at_breaks_the_tie_on_id(db: AsyncSession) -> None:
+async def test_identical_first_seen_at_breaks_the_tie_on_id(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     # now() is transaction_timestamp(): both rows share first_seen_at exactly,
     # so without the id tie-break the direction would be arbitrary.
     first = await repository.upsert_posting(db, make_posting("backend engineer intern"))
     second = await repository.upsert_posting(db, listed("backend engineering intern"))
 
-    decision = await resolve_duplicates(db, posting_id=second)
+    decision = await resolve_duplicates(db, provider, posting_id=second)
 
     assert decision is not None
     assert decision.canonical_id == first
     assert decision.duplicate_id == second
 
 
-async def test_the_review_band_flags_without_merging(db: AsyncSession) -> None:
+async def test_the_review_band_flags_without_merging(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     older = await repository.upsert_posting(db, make_posting("product manager intern"))
     await age(db, older, days=20)
     newer = await repository.upsert_posting(db, listed("product management intern"))
 
-    decision = await resolve_duplicates(db, posting_id=newer)
+    decision = await resolve_duplicates(db, provider, posting_id=newer)
 
     assert decision is not None
     assert decision.verdict == "review"
@@ -138,41 +184,47 @@ async def test_the_review_band_flags_without_merging(db: AsyncSession) -> None:
     assert await read(db, older) == ("open", None, None)
 
 
-async def test_a_distinct_sibling_is_left_alone(db: AsyncSession) -> None:
+async def test_a_distinct_sibling_is_left_alone(db: AsyncSession, provider: TitleVectors) -> None:
     await repository.upsert_posting(db, make_posting("machine learning intern"))
     other = await repository.upsert_posting(db, make_posting("frontend developer intern"))
 
-    assert await resolve_duplicates(db, posting_id=other) is None
+    assert await resolve_duplicates(db, provider, posting_id=other) is None
     assert await read(db, other) == ("open", None, None)
 
 
-async def test_an_already_flagged_sibling_is_not_reconsidered(db: AsyncSession) -> None:
+async def test_an_already_flagged_sibling_is_not_reconsidered(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     older = await repository.upsert_posting(db, make_posting("product manager intern"))
     await age(db, older, days=20)
     newer = await repository.upsert_posting(db, listed("product management intern"))
-    await resolve_duplicates(db, posting_id=newer)
+    await resolve_duplicates(db, provider, posting_id=newer)
 
     # The flagged row is excluded from the sibling set, so a second pass is a no-op
     # rather than overwriting a pairing Paul has not seen.
-    assert await resolve_duplicates(db, posting_id=newer) is None
+    assert await resolve_duplicates(db, provider, posting_id=newer) is None
     assert await read(db, newer) == ("open", None, older)
 
 
-async def test_a_merged_posting_is_not_resolved_again(db: AsyncSession) -> None:
+async def test_a_merged_posting_is_not_resolved_again(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     older = await repository.upsert_posting(db, make_posting("backend engineer intern"))
     await age(db, older, days=20)
     newer = await repository.upsert_posting(db, listed("backend engineering intern"))
-    await resolve_duplicates(db, posting_id=newer)
+    await resolve_duplicates(db, provider, posting_id=newer)
 
-    assert await resolve_duplicates(db, posting_id=newer) is None
+    assert await resolve_duplicates(db, provider, posting_id=newer) is None
 
 
-async def test_a_merged_row_cannot_also_carry_a_duplicate_flag(db: AsyncSession) -> None:
+async def test_a_merged_row_cannot_also_carry_a_duplicate_flag(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     # ck_postings_possible_duplicate_not_merged: two answers to one question.
     older = await repository.upsert_posting(db, make_posting("backend engineer intern"))
     await age(db, older, days=20)
     newer = await repository.upsert_posting(db, listed("backend engineering intern"))
-    await resolve_duplicates(db, posting_id=newer)
+    await resolve_duplicates(db, provider, posting_id=newer)
 
     status, merged_into, flagged = await read(db, newer)
     assert status == "merged"
@@ -189,14 +241,16 @@ async def test_open_siblings_excludes_the_subject(db: AsyncSession) -> None:
     assert [sibling.id for sibling in siblings] == [other]
 
 
-async def test_two_rows_on_one_board_are_never_candidates(db: AsyncSession) -> None:
+async def test_two_rows_on_one_board_are_never_candidates(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
     # Measured on a 4210-posting harvest: of the merge-band pairs sharing a board,
     # 11 of 11 were seniority or variant reqs, not duplicates. See ADR-004.
     mine = await repository.upsert_posting(db, make_posting("systems engineer"))
     await repository.upsert_posting(db, make_posting("system engineer"))
 
     assert await open_siblings(db, company_id=1, exclude_id=mine) == ()
-    assert await resolve_duplicates(db, posting_id=mine) is None
+    assert await resolve_duplicates(db, provider, posting_id=mine) is None
 
 
 async def test_a_cross_source_sighting_still_pairs(db: AsyncSession) -> None:
@@ -223,3 +277,45 @@ async def test_a_board_sighting_added_later_withdraws_the_candidate(db: AsyncSes
     )
 
     assert await open_siblings(db, company_id=1, exclude_id=mine) == ()
+
+
+async def test_subject_and_every_sibling_title_are_embedded_in_one_call(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
+    mine = await repository.upsert_posting(db, make_posting("backend engineer intern"))
+    await repository.upsert_posting(db, listed("backend engineering intern"))
+    await repository.upsert_posting(db, listed("data engineer intern"))
+
+    await resolve_duplicates(db, provider, posting_id=mine)
+
+    assert provider.calls == [
+        ["backend engineer intern", "backend engineering intern", "data engineer intern"]
+    ]
+
+
+async def test_a_same_board_sibling_is_never_embedded(
+    db: AsyncSession, provider: TitleVectors
+) -> None:
+    mine = await repository.upsert_posting(db, make_posting("systems engineer"))
+    await repository.upsert_posting(db, make_posting("system engineer"))
+
+    await resolve_duplicates(db, provider, posting_id=mine)
+
+    assert provider.calls == []
+
+
+async def test_a_qualifier_still_demotes_an_identical_vector_to_review(db: AsyncSession) -> None:
+    # Guard 2 survives the swap: even a cosine of 1.0 cannot merge "ai" into its absence.
+    class Identical:
+        async def embed(self, texts: Sequence[str]) -> list[Vector]:
+            return [[1.0, 0.0] for _ in texts]
+
+    older = await repository.upsert_posting(db, make_posting("software engineer intern"))
+    await age(db, older, days=20)
+    newer = await repository.upsert_posting(db, listed("ai software engineer intern"))
+
+    decision = await resolve_duplicates(db, Identical(), posting_id=newer)
+
+    assert decision is not None
+    assert decision.verdict == "review"
+    assert await read(db, newer) == ("open", None, older)
