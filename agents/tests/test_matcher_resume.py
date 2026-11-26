@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from offerradar_agents.matcher.resume import ResumeChunk, chunk_resume, resume_version
 
 # Inline: resume.md is gitignored, so CI has no copy to read.
@@ -93,13 +91,6 @@ def test_multiline_list_item_is_joined() -> None:
 def test_prose_is_ignored() -> None:
     chunks = chunk_resume("# Title\n\nIntro prose.\n\n---\n\nMore prose.\n\n- Item")
     assert [c.text for c in chunks] == ["Item"]
-
-
-def test_real_resume_yields_chunks() -> None:
-    markdown = (Path(__file__).resolve().parents[2] / "resume.md").read_text()
-    chunks = chunk_resume(markdown)
-    assert len(chunks) > 5
-    assert all(c.text for c in chunks)
 
 
 def test_duplicate_items_become_one_chunk() -> None:
