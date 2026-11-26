@@ -10,13 +10,15 @@ from sqlalchemy import (
     Identity,
     Integer,
     MetaData,
+    Numeric,
+    SmallInteger,
     Table,
     Text,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import REAL
+from sqlalchemy.dialects.postgresql import JSONB, REAL
 
 METADATA = MetaData()
 
@@ -140,4 +142,61 @@ matches = Table(
     Column("selected_for_analysis", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+match_analyses = Table(
+    "match_analyses",
+    METADATA,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("posting_id", BigInteger, ForeignKey("postings.id", ondelete="CASCADE"), nullable=False),
+    Column("description_hash", Text, nullable=False),
+    Column("prompt_version", Text, nullable=False),
+    Column("resume_version", Text, nullable=False),
+    Column("model", Text, nullable=False),
+    Column("provider", Text, nullable=False),
+    Column("score", SmallInteger, nullable=False),
+    Column("matched_skills", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("missing_skills", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("why_fit", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint(
+        "posting_id",
+        "description_hash",
+        "prompt_version",
+        "resume_version",
+        "model",
+        "provider",
+        name="uq_match_analyses_scoring_inputs",
+    ),
+)
+
+agent_runs = Table(
+    "agent_runs",
+    METADATA,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("status", Text, nullable=False, server_default=text("'running'")),
+    Column("budget_usd", Numeric(10, 4), nullable=False),
+    Column("spent_usd", Numeric(12, 6), nullable=False, server_default=text("0")),
+    Column("llm_call_count", Integer, nullable=False, server_default=text("0")),
+    Column("langgraph_thread_id", Text, unique=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+llm_calls = Table(
+    "llm_calls",
+    METADATA,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("run_id", BigInteger, ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False),
+    Column("agent", Text, nullable=False),
+    Column("model", Text, nullable=False),
+    Column("input_tokens", Integer, nullable=False),
+    Column("output_tokens", Integer, nullable=False),
+    Column("cache_read_tokens", Integer, nullable=False, server_default=text("0")),
+    Column("cost_usd", Numeric(12, 6), nullable=False),
+    Column("latency_ms", Integer, nullable=False),
+    Column("prompt_version", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

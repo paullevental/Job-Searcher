@@ -6,11 +6,14 @@ from pathlib import Path
 import pytest
 
 from offerradar_agents.matcher.eval import (
+    RankingFixture,
     RankingReport,
+    RatedPosting,
     RecordedChunk,
     RetrievalFixture,
     RetrievalQuery,
     RetrievalReport,
+    _spearman,
     evaluate_ranking,
     evaluate_retrieval,
     format_report,
@@ -24,8 +27,6 @@ from offerradar_agents.matcher.rank import score_posting
 FIXTURES = Path(__file__).parent / "fixtures"
 RANKING_FILE = FIXTURES / "ranking_eval.example.json"
 RETRIEVAL_FILE = FIXTURES / "retrieval_eval.example.json"
-
-NOT_WRITTEN = pytest.mark.xfail(raises=NotImplementedError, strict=True)
 
 
 def test_ranking_fixture_loads() -> None:
@@ -156,7 +157,6 @@ def test_format_report_marks_placeholders() -> None:
     assert "recall@5" in retrieval
 
 
-@NOT_WRITTEN
 @pytest.mark.parametrize(
     "similarities", [[0.2], [-1.0], [1.0], [0.1, 0.5, 0.9], [-0.5, 0.0, 0.5, 1.0]]
 )
@@ -167,7 +167,6 @@ def test_score_posting_stays_in_range(similarities: list[float]) -> None:
     assert -1.0 <= score <= 1.0
 
 
-@NOT_WRITTEN
 @pytest.mark.parametrize("index", [0, 1, 2])
 def test_score_posting_never_drops_when_one_similarity_rises(index: int) -> None:
     base = [0.1, 0.4, 0.7]
@@ -177,13 +176,11 @@ def test_score_posting_never_drops_when_one_similarity_rises(index: int) -> None
     assert score_posting(raised) >= score_posting(base)
 
 
-@NOT_WRITTEN
 def test_score_posting_handles_a_single_chunk() -> None:
     assert math.isfinite(score_posting([0.3]))
     assert score_posting([0.6]) >= score_posting([0.3])
 
 
-@NOT_WRITTEN
 def test_evaluate_ranking_reports_in_range_metrics() -> None:
     report = evaluate_ranking(load_ranking_fixture(RANKING_FILE), k=2)
 
@@ -194,7 +191,6 @@ def test_evaluate_ranking_reports_in_range_metrics() -> None:
     assert report.placeholder
 
 
-@NOT_WRITTEN
 def test_evaluate_ranking_holdout_scores_only_holdout_rows() -> None:
     report = evaluate_ranking(load_ranking_fixture(RANKING_FILE), holdout=True, k=2)
 
@@ -202,14 +198,12 @@ def test_evaluate_ranking_holdout_scores_only_holdout_rows() -> None:
     assert report.rated == 2
 
 
-@NOT_WRITTEN
 def test_evaluate_ranking_rewards_ratings_that_follow_similarity() -> None:
     report = evaluate_ranking(load_ranking_fixture(RANKING_FILE), k=2)
 
     assert report.spearman > 0
 
 
-@NOT_WRITTEN
 def test_evaluate_retrieval_is_perfect_when_the_nearest_chunk_is_relevant() -> None:
     fixture = RetrievalFixture(
         embedding_model="m",
@@ -226,9 +220,59 @@ def test_evaluate_retrieval_is_perfect_when_the_nearest_chunk_is_relevant() -> N
     assert report.recall_at_k == 1.0
 
 
-@NOT_WRITTEN
-def test_evaluate_retrieval_recall_is_bounded() -> None:
+def test_evaluate_retrieval_recall_is_exact_with_ordinal_tie_break() -> None:
     report = evaluate_retrieval(load_retrieval_fixture(RETRIEVAL_FILE), k=1)
 
     assert report.queries == 2
-    assert 0.0 <= report.recall_at_k <= 1.0
+    assert report.recall_at_k == pytest.approx(0.75)
+
+
+@pytest.mark.parametrize(("k", "recall"), [(1, 0.5), (2, 0.5), (3, 1.0)])
+def test_evaluate_ranking_recall_at_k_is_exact(k: int, recall: float) -> None:
+    fixture = RankingFixture(
+        embedding_model="m",
+        chunk_vectors=((1.0, 0.0),),
+        postings=(
+            RatedPosting(posting_id=1, vector=(1.0, 0.0), rating=5),
+            RatedPosting(posting_id=2, vector=(0.0, 1.0), rating=4),
+            RatedPosting(posting_id=3, vector=(1.0, 1.0), rating=1),
+        ),
+    )
+
+    assert evaluate_ranking(fixture, k=k).recall_at_k == pytest.approx(recall)
+
+
+def test_zero_norm_fixture_vector_fails_clearly() -> None:
+    fixture = RankingFixture(
+        embedding_model="m",
+        chunk_vectors=((0.0, 0.0),),
+        postings=(RatedPosting(posting_id=1, vector=(1.0, 0.0), rating=5),),
+    )
+
+    with pytest.raises(ValueError, match="zero norm"):
+        evaluate_ranking(fixture)
+
+
+def test_spearman_perfect_and_reversed() -> None:
+    assert _spearman([1, 2, 3], [10, 20, 30]) == pytest.approx(1.0)
+    assert _spearman([1, 2, 3], [30, 20, 10]) == pytest.approx(-1.0)
+
+
+def test_spearman_averages_tied_ranks() -> None:
+    assert _spearman([1, 1, 2], [1, 2, 3]) == pytest.approx(math.sqrt(3) / 2)
+    assert math.isnan(_spearman([1, 1, 1], [1, 2, 3]))
+
+
+def test_evaluate_retrieval_recall_is_exact() -> None:
+    fixture = RetrievalFixture(
+        embedding_model="m",
+        chunks=(
+            RecordedChunk(0, (1.0, 0.0)),
+            RecordedChunk(1, (0.8, 0.6)),
+            RecordedChunk(2, (0.0, 1.0)),
+        ),
+        queries=(RetrievalQuery("a", "x", (1.0, 0.0), frozenset({0, 2})),),
+    )
+
+    assert evaluate_retrieval(fixture, k=1).recall_at_k == 0.5
+    assert evaluate_retrieval(fixture, k=3).recall_at_k == 1.0

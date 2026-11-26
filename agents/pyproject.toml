@@ -16,6 +16,7 @@ dependencies = [
     # not handle wildcards or crawl-delay; Protego is what Scrapy uses.
     "protego>=0.3",
     "pgvector>=0.5.1",
+    "anthropic>=0.70",
 ]
 
 # PEP 735 dependency group, not an optional-dependencies extra: `uv sync`
@@ -33,6 +34,7 @@ dev = [
     # the CI runner's Docker Engine rejects clients below API 1.40.
     "testcontainers[postgres]>=4.9",
     "psycopg[binary]>=3.2",
+    "httpx2>=2.0",
 ]
 
 [build-system]

@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from offerradar_agents.matcher.rank import score_posting
+
+RELEVANT_RATING = 4.0
 
 
 @dataclass(frozen=True)
@@ -151,16 +156,74 @@ def split_holdout(ids: Sequence[int], *, fraction: float, seed: int) -> tuple[li
     return [i for i in unique if i not in held], holdout
 
 
-# Paul writes this: recall in top k and Spearman; holdout=True scores holdout rows only.
+def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    if norm == 0:
+        raise ValueError("a fixture vector has zero norm")
+    return sum(x * y for x, y in zip(a, b, strict=True)) / norm
+
+
+def _average_ranks(values: Sequence[float]) -> list[float]:
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    start = 0
+    while start < len(order):
+        end = start
+        while end + 1 < len(order) and values[order[end + 1]] == values[order[start]]:
+            end += 1
+        for i in range(start, end + 1):
+            ranks[order[i]] = (start + end) / 2 + 1
+        start = end + 1
+    return ranks
+
+
+def _spearman(xs: Sequence[float], ys: Sequence[float]) -> float:
+    rx, ry = _average_ranks(xs), _average_ranks(ys)
+    mx, my = sum(rx) / len(rx), sum(ry) / len(ry)
+    cov = sum((a - mx) * (b - my) for a, b in zip(rx, ry, strict=True))
+    var = math.sqrt(sum((a - mx) ** 2 for a in rx) * sum((b - my) ** 2 for b in ry))
+    return cov / var if var else math.nan
+
+
+# recall_at_k and spearman are NaN when undefined; ties break as in rank_postings.
 def evaluate_ranking(
     fixture: RankingFixture, *, holdout: bool = False, k: int = 20
 ) -> RankingReport:
-    raise NotImplementedError("the ranking metrics are Paul's (AGENTS.md §11 M4)")
+    rows = [p for p in fixture.postings if p.holdout == holdout]
+    scores = [
+        score_posting([_cosine(p.vector, chunk) for chunk in fixture.chunk_vectors]) for p in rows
+    ]
+    order = sorted(range(len(rows)), key=lambda i: (-scores[i], rows[i].posting_id))
+    top = {rows[i].posting_id for i in order[:k]}
+    relevant = [p.posting_id for p in rows if p.rating >= RELEVANT_RATING]
+    recall = sum(i in top for i in relevant) / len(relevant) if relevant else math.nan
+    spearman = _spearman([p.rating for p in rows], scores) if len(rows) > 1 else math.nan
+    return RankingReport(
+        rated=len(rows),
+        holdout=holdout,
+        k=k,
+        recall_at_k=recall,
+        spearman=spearman,
+        placeholder=fixture.placeholder,
+    )
 
 
-# Paul writes this: recall@k of the judged-relevant chunk ordinals per query.
 def evaluate_retrieval(fixture: RetrievalFixture, *, k: int = 5) -> RetrievalReport:
-    raise NotImplementedError("the retrieval metrics are Paul's (AGENTS.md §11 M4)")
+    recalls = []
+    for query in fixture.queries:
+        if not query.relevant_ordinals:
+            raise ValueError("a retrieval query has no relevant chunks")
+        nearest = sorted(
+            fixture.chunks, key=lambda c: (-_cosine(query.vector, c.vector), c.ordinal)
+        )[:k]
+        hits = query.relevant_ordinals & {c.ordinal for c in nearest}
+        recalls.append(len(hits) / len(query.relevant_ordinals))
+    return RetrievalReport(
+        queries=len(recalls),
+        k=k,
+        recall_at_k=sum(recalls) / len(recalls) if recalls else math.nan,
+        placeholder=fixture.placeholder,
+    )
 
 
 def format_report(report: RankingReport | RetrievalReport) -> str:

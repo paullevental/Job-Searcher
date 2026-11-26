@@ -1,0 +1,7 @@
+{"postings": [
+  {"posting_id": 1, "rating": 5, "text_hash": "ec0a5ea1c08b2a094e291938bd80f81f9bffb5b59ca696bb8c27184511a1818c"},
+  {"posting_id": 2, "rating": 4, "text_hash": "c600064b2e27c07c7546287a109ef33d64c1a17aee6d317d709a893b2dd104e4"},
+  {"posting_id": 3, "rating": 3, "text_hash": "31e7656a26a033c94b6c86d6d732aff16017ace770156b942b2dfe748e8e1d54"},
+  {"posting_id": 4, "rating": 2, "text_hash": "e4f0c2393aded5960c680dedf034b9755230b7a3237b20418082d32f40dd6c1d"},
+  {"posting_id": 5, "rating": 1, "text_hash": "b9d5a2d15e3f0987749f05d159852ae2e297128d53418b5b78385be22b005abe"}
+]}

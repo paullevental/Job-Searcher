@@ -11,6 +11,7 @@ from offerradar_agents.config import get_settings
 from offerradar_agents.db.session import build_engine, build_session_factory
 from offerradar_agents.embeddings.errors import EMBEDDING_ERRORS
 from offerradar_agents.embeddings.ollama import OllamaEmbeddingProvider
+from offerradar_agents.matcher.stage2_cli import add_stage2_commands, run_stage2_command
 from offerradar_agents.matcher.store import store_resume
 
 
@@ -52,7 +53,10 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     embed = commands.add_parser("embed-resume")
     embed.add_argument("--resume", type=Path, required=True)
+    add_stage2_commands(commands)
     args = parser.parse_args(argv)
+    if args.command != "embed-resume":
+        return run_stage2_command(args)
     try:
         markdown = args.resume.read_text(encoding="utf-8")
     except OSError as exc:

@@ -59,6 +59,7 @@ per the Comments rule above.
 | M2 | Scout collects postings from four sources | `docs/milestones/M2.md` |
 | M3 | Dedup collapses duplicates, dead postings retire | `docs/milestones/M3.md` |
 | M4 | Rank postings against the resume with free local embeddings | `docs/milestones/M4.md` |
+| M5 | Score Gate-1 picks with Claude under a hard budget | `docs/milestones/M5.md` |
 
 Current acceptance-check state, build-environment facts and defect counts live
 in those files, not here — read the one for the milestone in question.

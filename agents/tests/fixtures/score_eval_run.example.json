@@ -1,0 +1,6 @@
+{
+  "prompt_version": "v1",
+  "provider": "anthropic",
+  "model": "example-model",
+  "scores": {"1": 92, "2": 75, "3": 55, "4": null, "5": 10}
+}

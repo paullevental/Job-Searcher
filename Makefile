@@ -16,9 +16,13 @@ GRADLE := cd workflow && ./gradlew
 # succeeds having done nothing. $0 is set to `sh` so "$$@" starts at the -c.
 PSQL := $(COMPOSE) exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" "$$@"' sh
 
+# Relative to agents/; pass an absolute path for a resume outside the repo.
+RESUME ?= ../resume.md
+
 .PHONY: help env hooks up down down-v logs ps \
         migrate migrate-info seed seed-volume unseed-volume explain db-shell \
-        ollama-pull embed-resume record-dedup-vectors \
+        ollama-pull embed-resume record-dedup-vectors score-eval cost-report \
+        rank shortlist select score sample-score-eval score-eval-run \
         test test-agents test-agents-offline test-workflow test-web \
         lint lint-agents lint-workflow lint-web \
         fmt fmt-agents fmt-workflow fmt-web \
@@ -104,11 +108,44 @@ embed-resume: ## Chunk and embed resume.md once per version (needs postgres up +
 	set -a && . ./.env && set +a && cd agents && \
 		DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
 		OLLAMA_URL=http://localhost:$$OLLAMA_PORT \
-		$(UV) run python -m offerradar_agents.matcher embed-resume --resume ../resume.md
+		$(UV) run python -m offerradar_agents.matcher embed-resume --resume $(RESUME)
 
 record-dedup-vectors: ## Embed dedup_pairs.json titles via local Ollama into a test fixture
 	set -a && . ./.env && set +a && cd agents && OLLAMA_URL=http://localhost:$$OLLAMA_PORT \
 		$(UV) run python -m offerradar_agents.dedup.record --out tests/fixtures/dedup_pair_vectors.json
+
+rank: ## Stage 1: score every open posting against the embedded resume into matches
+	set -a && . ./.env && set +a && cd agents && DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
+		$(UV) run python -m offerradar_agents.matcher rank --resume $(RESUME)
+
+shortlist: ## Gate 1: print the top GATE1_SHORTLIST_SIZE postings that pass the prefilter
+	set -a && . ./.env && set +a && cd agents && DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
+		$(UV) run python -m offerradar_agents.matcher shortlist
+
+select: ## Gate 1: mark postings for stage 2: make select IDS="12 34"
+	set -a && . ./.env && set +a && cd agents && DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
+		$(UV) run python -m offerradar_agents.matcher select $(IDS)
+
+score: ## Stage 2: score Gate-1-selected postings (spends money when LLM_PROVIDER=anthropic)
+	set -a && . ./.env && set +a && cd agents && DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" OLLAMA_URL=http://localhost:$$OLLAMA_PORT \
+		$(UV) run python -m offerradar_agents.matcher score --resume $(RESUME)
+
+sample-score-eval: ## Write 30 postings to rate 1-5: make sample-score-eval OUT=<file>
+	set -a && . ./.env && set +a && cd agents && DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
+		$(UV) run python -m offerradar_agents.matcher sample-score-eval --out $(OUT)
+
+score-eval-run: ## Score rated postings: make score-eval-run RATINGS=<file> OUT=<file> [PROMPT=score_v2] [PROVIDER=ollama]
+	set -a && . ./.env && set +a && cd agents && DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" OLLAMA_URL=http://localhost:$$OLLAMA_PORT \
+		$(UV) run python -m offerradar_agents.matcher score-eval-run --resume $(RESUME) \
+		--ratings $(RATINGS) --out $(OUT) $(if $(PROMPT),--prompt-version $(PROMPT)) $(if $(PROVIDER),--provider $(PROVIDER))
+
+score-eval: ## Stage-2 eval: make score-eval RATINGS=<ratings.json> RUN=<run.json>
+	cd agents && $(UV) run python -m offerradar_agents.matcher.score_eval --ratings $(RATINGS) --run $(RUN)
+
+cost-report: ## Funnel vs all-postings cost for one run: make cost-report RUN_ID=<n> (needs postgres up)
+	set -a && . ./.env && set +a && cd agents && \
+		DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:$$POSTGRES_PORT/$$POSTGRES_DB" \
+		$(UV) run python -m offerradar_agents.matcher.cost_report --run-id $(RUN_ID)
 
 # --- tests -----------------------------------------------------------------
 

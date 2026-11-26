@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Fail if a model SDK is imported outside the shared LLM client.
-
-AGENTS.md §2 rule 8 and §8 "Providers" require every LLM call to go through
-agents/src/offerradar_agents/llm/. A stray `import anthropic` elsewhere bypasses
-the budget check, max_tokens, the timeout and the retry cap at the same time,
-so rules 8 and 10 share this one chokepoint.
-"""
+# Rule 8: a model SDK imported outside agents/.../llm/ bypasses budget, max_tokens, timeout and retry cap.
 
 from __future__ import annotations
 
@@ -14,8 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = ROOT / "agents" / "src" / "offerradar_agents"
-ALLOWED_DIR = PACKAGE / "llm"
+ALLOWED_FILES = (Path("agents/tests/test_llm_anthropic_provider.py"),)
 
 BANNED_MODULES = ("anthropic", "openai", "cohere", "mistralai", "google.generativeai")
 IMPORT_RE = re.compile(
@@ -23,19 +16,34 @@ IMPORT_RE = re.compile(
 )
 
 
-def main() -> int:
+def _scanned(root: Path) -> list[Path]:
+    package = root / "agents" / "src" / "offerradar_agents"
+    allowed_dir = package / "llm"
+    allowed_files = {root / p for p in ALLOWED_FILES}
+    paths = [
+        *package.rglob("*.py"),
+        *(root / "agents" / "tests").rglob("*.py"),
+        *(root / "scripts").rglob("*.py"),
+    ]
+    return sorted(p for p in paths if allowed_dir not in p.parents and p not in allowed_files)
+
+
+def main(root: Path = ROOT) -> int:
+    package = root / "agents" / "src" / "offerradar_agents"
+    if not (package / "llm").is_dir():
+        print(f"missing {package / 'llm'}; chokepoint cannot be verified", file=sys.stderr)
+        return 1
+
     violations: list[str] = []
-    for path in sorted(PACKAGE.rglob("*.py")):
-        if not ALLOWED_DIR in path.parents:
-            text = path.read_text(encoding="utf-8")
-            for match in IMPORT_RE.finditer(text):
-                module = match.group("mod") or match.group("frm")
-                # Prefix match on the full dotted name, so "google.generativeai" is
-                # banned without also banning "google.cloud.storage".
-                if any(module == b or module.startswith(f"{b}.") for b in BANNED_MODULES):
-                    line = text[: match.start()].count("\n") + 1
-                    rel = path.relative_to(ROOT)
-                    violations.append(f"{rel}:{line}: imports {module!r}")
+    for path in _scanned(root):
+        text = path.read_text(encoding="utf-8")
+        for match in IMPORT_RE.finditer(text):
+            module = match.group("mod") or match.group("frm")
+            # Prefix match on the full dotted name, so "google.generativeai" is
+            # banned without also banning "google.cloud.storage".
+            if any(module == b or module.startswith(f"{b}.") for b in BANNED_MODULES):
+                line = text[: match.start()].count("\n") + 1
+                violations.append(f"{path.relative_to(root)}:{line}: imports {module!r}")
 
     if violations:
         print("Model SDK imported outside the shared LLM client:", file=sys.stderr)

@@ -23,19 +23,29 @@ class RetrievedChunk:
     similarity: float
 
 
-# Paul writes this: one posting's cosine similarities to every resume chunk -> one score in [-1, 1].
+TOP_CHUNKS = 3
+
+
 def score_posting(chunk_similarities: Sequence[float]) -> float:
-    raise NotImplementedError("the ranking formula is Paul's (AGENTS.md §11 M4)")
+    if not chunk_similarities:
+        raise ValueError("a posting needs at least one chunk similarity")
+    top = sorted(chunk_similarities, reverse=True)[:TOP_CHUNKS]
+    return sum(top) / len(top)
 
 
-# Paul writes this: scores every open posting, upserts matches.similarity, returns the top k.
+# queries.py imports RetrievedChunk from here, so its helpers are imported inside the functions.
 async def rank_postings(
     session: AsyncSession, *, resume_version: str, model: str, k: int = 20
 ) -> list[RankedPosting]:
-    raise NotImplementedError("rank_postings is Paul's (AGENTS.md §11 M4)")
+    from offerradar_agents.matcher.queries import chunk_similarities, upsert_matches
+
+    similarities = await chunk_similarities(session, resume_version=resume_version, model=model)
+    scores = {pid: score_posting(values) for pid, values in similarities.items()}
+    await upsert_matches(session, scores, resume_version=resume_version, model=model)
+    ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    return [RankedPosting(pid, score) for pid, score in ranked[:k]]
 
 
-# Paul writes this: the k resume chunks nearest to `text`, most similar first.
 async def retrieve_resume_context(
     session: AsyncSession,
     provider: EmbeddingProvider,
@@ -45,4 +55,7 @@ async def retrieve_resume_context(
     model: str,
     k: int = 5,
 ) -> list[RetrievedChunk]:
-    raise NotImplementedError("retrieve_resume_context is Paul's (AGENTS.md §11 M4)")
+    from offerradar_agents.matcher.queries import nearest_chunks
+
+    [vector] = await provider.embed([text])
+    return await nearest_chunks(session, vector, resume_version=resume_version, model=model, k=k)

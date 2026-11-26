@@ -2,7 +2,7 @@
 
 Instructions for any coding agent working in this repo. Read all of it before your first change. The human developer is Paul. The full design rationale is in `docs/OFFERRADAR.md`; you do not need it to work, but read the relevant section if a rule here is unclear.
 
-**Current milestone: M1** ← Paul updates this line. Work only on this milestone.
+**Current milestone: M5** ← Paul updates this line. Work only on this milestone.
 
 ---
 
@@ -87,7 +87,7 @@ offerradar/
 |---|---|---|
 | Agent service | Python 3.12, FastAPI, LangGraph (+ Postgres checkpointer), httpx (async), Playwright (only for JS-rendered pages), SQLAlchemy 2, Pydantic v2 | requests, Selenium, CrewAI/AutoGen |
 | Embeddings | Ollama with `nomic-embed-text` (768 dims; use `search_document:` / `search_query:` prefixes). Alternative: `bge-small` (384 dims). Behind `EmbeddingProvider` | Paid embedding APIs (unless Paul decides after M4's eval) |
-| LLM | Anthropic SDK behind `LLMProvider`, selectable by config: `anthropic` (default) or `ollama` (local, for dev and comparison). Scoring/classification: `claude-haiku-5-5`. Recon/Scribe: `claude-sonnet-5-5`. Tool use with JSON schemas for structured output, prompt caching for resume/system context, Message Batches API for nightly scoring | Free-text JSON parsing, calling an SDK directly outside the provider module |
+| LLM | Anthropic SDK behind `LLMProvider`, selectable by config: `anthropic` (default) or `ollama` (local, for dev and comparison). Scoring/classification: `claude-haiku-5-5`. Recon/Scribe: `claude-sonnet-5-5`. Tool use with JSON schemas for structured output, prompt caching for resume/system context, real-time calls for nightly scoring (ADR-006) | Free-text JSON parsing, calling an SDK directly outside the provider module |
 | Workflow service | Java 21, Spring Boot 3, Spring Data JPA, Quartz (JDBC job store), Bean Validation | `ddl-auto=update`, `@Scheduled` for the nightly run |
 | Database | PostgreSQL 16 + pgvector, Flyway migrations (plain SQL) | Separate vector DB |
 | Events / locks | Redis 7: Streams with consumer groups, rate-limit buckets, run lock | Kafka, RabbitMQ |
@@ -169,7 +169,7 @@ Deletes from `postings` cascade to derived rows (`posting_sightings`, `matches`,
 - **Stage 0, prefilter:** rules only (term, location, seniority words, citizenship/clearance keywords).
 - **Stage 1, embed + rank (free):** embed resume chunks once per `resume_version`; embed each posting once on first sight. `rank_postings(k=20)` scores each open posting by cosine similarity to resume chunks (formula chosen by Paul in M4, e.g. mean of top-3 chunk similarities), writes `matches.similarity`, and sends the top `GATE1_SHORTLIST_SIZE` (default 20) to Gate 1 with their nearest resume chunks.
 - **Gate 1:** Paul sets `selected_for_analysis`. If `AUTO_FORWARD_TOP_N` > 0 (default 0), that many top postings are selected automatically.
-- **Stage 2, Claude scoring:** only `selected_for_analysis = true`. Results go to `match_analyses`, not `matches` (§7). Skip if a `match_analyses` row exists for the same `description_hash`, `prompt_version`, `resume_version`. That row also records `model` and `provider`; whether those two belong in the skip key is an open M5 decision, so do not assume either answer. Retrieve top-k resume chunks → score via Batches API.
+- **Stage 2, Claude scoring:** only `selected_for_analysis = true`. Results go to `match_analyses`, not `matches` (§7). Skip if a `match_analyses` row exists for the same posting text hash, `prompt_version`, `resume_version`, `model` and `provider` (ADR-006). The whole resume is the cached prompt context; score with real-time calls, not the Batches API.
 - Output schema (via tool use): `{score: int 0-100, matched_skills: string[], missing_skills: string[], why_fit: string (≤2 sentences)}`.
 - Prompts live in `agents/prompts/` and carry a version; store `prompt_version` with every result.
 

@@ -319,7 +319,6 @@ async def test_upsert_matches_accepts_the_bounds_and_empty_input(session: AsyncS
     )
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True)
 async def test_rank_postings_writes_a_match_for_every_open_embedded_posting(
     session: AsyncSession,
 ) -> None:
@@ -345,7 +344,6 @@ async def test_rank_postings_writes_a_match_for_every_open_embedded_posting(
     )
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True)
 async def test_rank_postings_keeps_gate_one_selection_and_is_rerunnable(
     session: AsyncSession,
 ) -> None:
@@ -365,7 +363,6 @@ async def test_rank_postings_keeps_gate_one_selection_and_is_rerunnable(
     assert rows[pid].selected_for_analysis is True
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True)
 async def test_rank_postings_returns_at_most_the_open_count(session: AsyncSession) -> None:
     company = await add_company(session)
     await add_posting(session, company, "p1", vec(1, 0))
@@ -377,7 +374,6 @@ async def test_rank_postings_returns_at_most_the_open_count(session: AsyncSessio
     assert len(top) == 1
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True)
 async def test_retrieve_resume_context_returns_at_most_k_sorted_descending(
     session: AsyncSession,
 ) -> None:
@@ -395,7 +391,6 @@ async def test_retrieve_resume_context_returns_at_most_k_sorted_descending(
     assert all(-1.0 <= c.similarity <= 1.0 for c in found)
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True)
 async def test_retrieve_resume_context_with_no_chunks_is_empty(session: AsyncSession) -> None:
     found = await retrieve_resume_context(
         session,
@@ -407,3 +402,19 @@ async def test_retrieve_resume_context_with_no_chunks_is_empty(session: AsyncSes
     )
 
     assert found == []
+
+
+async def test_retrieve_resume_context_returns_k_ordered_by_similarity(
+    session: AsyncSession,
+) -> None:
+    provider = FakeEmbeddingProvider(dimension=EMBEDDING_DIM)
+    for ordinal in range(6):
+        await add_chunk(session, ordinal, vec(1, ordinal / 5))
+    await session.commit()
+
+    found = await retrieve_resume_context(
+        session, provider, "python backend", resume_version=VERSION, model=MODEL, k=3
+    )
+
+    assert len(found) == 3
+    assert [c.similarity for c in found] == sorted((c.similarity for c in found), reverse=True)
